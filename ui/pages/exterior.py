@@ -1,0 +1,308 @@
+"""外设页面 - 状态卡片 + 支腿 2×2 + 遮阳棚 2×2 + 外部照明大开关"""
+
+from PyQt6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QFrame,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QGridLayout,
+)
+from PyQt6.QtCore import Qt, QTimer
+
+from app.ui.pages.base import PageBase
+from app.ui.widgets.long_press_button import LongPressButton
+from app.devices.pdu import get_pdu_controller
+
+# PDU STATE: 0=Idle, 1=LegExt, 2=LegRet, 3=AwningExt, 4=AwningRet, 5=EStop, 6=Fault
+PDU_STATE_NAMES = {
+    0: "空闲",
+    1: "支腿伸",
+    2: "支腿收",
+    3: "棚伸",
+    4: "棚收",
+    5: "急停",
+    6: "故障",
+}
+
+LEG_EXTEND_STATE = 1
+LEG_RETRACT_STATE = 2
+AWNING_EXTEND_STATE = 3
+AWNING_RETRACT_STATE = 4
+
+
+def _limit_str(up: bool | None, down: bool | None) -> str:
+    if up is None and down is None:
+        return "--/--"
+    u, d = ("✓" if up else "○"), ("✓" if down else "○")
+    return f"UP:{u} DN:{d}"
+
+
+def _awning_limit_str(ai: bool | None, ao: bool | None) -> str:
+    if ai is None and ao is None:
+        return "--/--"
+    i, o = ("✓" if ai else "○"), ("✓" if ao else "○")
+    return f"IN:{i} OUT:{o}"
+
+
+class ExteriorPage(PageBase):
+    """外设页：顶部状态卡 + 支腿 2×2 + 遮阳棚 2×2 + 外部照明"""
+
+    def __init__(self, app_state=None):
+        super().__init__("外设")
+        self._app_state = app_state
+        layout = self.layout()
+        if layout is None:
+            return
+
+        while layout.count() > 0:
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        inner = QWidget()
+        ly = QVBoxLayout(inner)
+        ly.setSpacing(8)
+        ly.setContentsMargins(10, 10, 10, 10)
+
+        title = QLabel("外设")
+        title.setObjectName("pageTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ly.addWidget(title)
+
+        # 1) 顶部状态卡片：限位、运行、E-STOP、故障码（紧凑两行）
+        status_card = self._build_status_card()
+        ly.addWidget(status_card)
+
+        # 2) 支腿：2×2 大按钮
+        leg_card = self._build_leg_card()
+        ly.addWidget(leg_card)
+
+        # 3) 遮阳棚：2×2 大按钮
+        awning_card = self._build_awning_card()
+        ly.addWidget(awning_card)
+
+        # 4) 外部照明：独立一行大开关
+        light_row = self._build_ext_light_row()
+        ly.addLayout(light_row)
+
+        ly.addStretch()
+        scroll.setWidget(inner)
+        layout.addWidget(scroll)
+
+        if app_state:
+            app_state.changed.connect(
+                self._on_state_changed,
+                Qt.ConnectionType.QueuedConnection,
+            )
+            QTimer.singleShot(0, self._refresh_once)
+
+    def _build_status_card(self) -> QFrame:
+        """限位状态、运行状态、E-STOP、故障码，紧凑两行"""
+        card = QFrame(objectName="card")
+        ly = QVBoxLayout(card)
+        ly.setSpacing(4)
+        ly.setContentsMargins(10, 8, 10, 8)
+
+        row1 = QHBoxLayout()
+        row1.addWidget(QLabel("支腿限位:", objectName="small"))
+        self._leg_limit_label = QLabel("--/--")
+        self._leg_limit_label.setObjectName("small")
+        row1.addWidget(self._leg_limit_label)
+        row1.addSpacing(12)
+        row1.addWidget(QLabel("棚限位:", objectName="small"))
+        self._awning_limit_label = QLabel("--/--")
+        self._awning_limit_label.setObjectName("small")
+        row1.addWidget(self._awning_limit_label)
+        row1.addStretch()
+        ly.addLayout(row1)
+
+        row2 = QHBoxLayout()
+        row2.addWidget(QLabel("运行:", objectName="small"))
+        self._run_state_label = QLabel("空闲")
+        self._run_state_label.setObjectName("small")
+        row2.addWidget(self._run_state_label)
+        row2.addSpacing(12)
+        row2.addWidget(QLabel("E-STOP:", objectName="small"))
+        self._estop_label = QLabel("正常")
+        self._estop_label.setObjectName("small")
+        row2.addWidget(self._estop_label)
+        row2.addSpacing(12)
+        row2.addWidget(QLabel("故障码:", objectName="small"))
+        self._fault_label = QLabel("--")
+        self._fault_label.setObjectName("small")
+        row2.addWidget(self._fault_label)
+        row2.addStretch()
+        ly.addLayout(row2)
+
+        return card
+
+    def _build_leg_card(self) -> QFrame:
+        """支腿 2×2：Extend / Retract / Stop / 留空"""
+        card = QFrame(objectName="card")
+        ly = QVBoxLayout(card)
+        ly.setSpacing(8)
+        ly.setContentsMargins(10, 10, 10, 10)
+
+        ly.addWidget(QLabel("支腿", objectName="accent"))
+
+        grid = QGridLayout()
+        self._leg_extend_btn = LongPressButton("伸出")
+        self._leg_extend_btn.setHoldMs(1500)
+        self._leg_extend_btn.setMinimumHeight(52)
+        self._leg_extend_btn.confirmed.connect(self._on_leg_extend)
+        self._leg_retract_btn = LongPressButton("收回")
+        self._leg_retract_btn.setHoldMs(1500)
+        self._leg_retract_btn.setMinimumHeight(52)
+        self._leg_retract_btn.confirmed.connect(self._on_leg_retract)
+        self._leg_stop_btn = LongPressButton("停止")
+        self._leg_stop_btn.setHoldMs(1500)
+        self._leg_stop_btn.setDanger(True)
+        self._leg_stop_btn.setMinimumHeight(52)
+        self._leg_stop_btn.confirmed.connect(self._on_leg_stop)
+
+        grid.addWidget(self._leg_extend_btn, 0, 0)
+        grid.addWidget(self._leg_retract_btn, 0, 1)
+        grid.addWidget(self._leg_stop_btn, 1, 0)
+        # 第 4 格留空
+        ly.addLayout(grid)
+
+        return card
+
+    def _build_awning_card(self) -> QFrame:
+        """遮阳棚 2×2：Extend / Retract / Stop / 留空"""
+        card = QFrame(objectName="card")
+        ly = QVBoxLayout(card)
+        ly.setSpacing(8)
+        ly.setContentsMargins(10, 10, 10, 10)
+
+        ly.addWidget(QLabel("遮阳棚", objectName="accent"))
+
+        grid = QGridLayout()
+        self._awning_extend_btn = LongPressButton("伸出")
+        self._awning_extend_btn.setHoldMs(1500)
+        self._awning_extend_btn.setMinimumHeight(52)
+        self._awning_extend_btn.confirmed.connect(self._on_awning_extend)
+        self._awning_retract_btn = LongPressButton("收回")
+        self._awning_retract_btn.setHoldMs(1500)
+        self._awning_retract_btn.setMinimumHeight(52)
+        self._awning_retract_btn.confirmed.connect(self._on_awning_retract)
+        self._awning_stop_btn = LongPressButton("停止")
+        self._awning_stop_btn.setHoldMs(1500)
+        self._awning_stop_btn.setDanger(True)
+        self._awning_stop_btn.setMinimumHeight(52)
+        self._awning_stop_btn.confirmed.connect(self._on_awning_stop)
+
+        grid.addWidget(self._awning_extend_btn, 0, 0)
+        grid.addWidget(self._awning_retract_btn, 0, 1)
+        grid.addWidget(self._awning_stop_btn, 1, 0)
+
+        ly.addLayout(grid)
+
+        return card
+
+    def _build_ext_light_row(self) -> QHBoxLayout:
+        """外部照明：独立一行大开关"""
+        row = QHBoxLayout()
+        row.addWidget(QLabel("外部照明", objectName="accent"))
+        self._ext_light_btn = QPushButton("关")
+        self._ext_light_btn.setCheckable(True)
+        self._ext_light_btn.setMinimumHeight(52)
+        self._ext_light_btn.clicked.connect(self._on_ext_light_clicked)
+        row.addWidget(self._ext_light_btn, 1)
+        return row
+
+    def _refresh_once(self) -> None:
+        if self._app_state:
+            self._on_state_changed(self._app_state.get_snapshot())
+
+    def _on_state_changed(self, snap) -> None:
+        if snap is None:
+            return
+        pd = snap.pdu
+        state = pd.pdu_state if pd.pdu_state is not None else 0
+        leg_running = state in (LEG_EXTEND_STATE, LEG_RETRACT_STATE)
+        awning_running = state in (AWNING_EXTEND_STATE, AWNING_RETRACT_STATE)
+        estop_or_fault = state in (5, 6)
+
+        # 状态卡
+        ll = pd.leg_limits
+        up = bool(ll[0]) if ll and len(ll) >= 1 else None
+        down = bool(ll[1]) if ll and len(ll) >= 2 else None
+        self._leg_limit_label.setText(_limit_str(up, down))
+
+        al = pd.awning_limits
+        ai = bool(al[0]) if al and len(al) >= 1 else None
+        ao = bool(al[1]) if al and len(al) >= 2 else None
+        self._awning_limit_label.setText(_awning_limit_str(ai, ao))
+
+        state_name = PDU_STATE_NAMES.get(state, str(state))
+        if leg_running or awning_running:
+            self._run_state_label.setText(state_name + "…")
+        else:
+            self._run_state_label.setText("空闲")
+
+        estop = pd.e_stop
+        self._estop_label.setText("已按下" if estop else "正常")
+        self._estop_label.setStyleSheet("color: #B91C1C; font-weight: bold;" if estop else "")
+        fc = pd.pdu_fault_code
+        self._fault_label.setText(str(fc) if fc is not None else "--")
+
+        # 支腿：运行时禁用相反方向，Stop 仅运行中可用
+        self._leg_extend_btn.setEnabled(not estop_or_fault and state != LEG_RETRACT_STATE)
+        self._leg_retract_btn.setEnabled(not estop_or_fault and state != LEG_EXTEND_STATE)
+        self._leg_stop_btn.setEnabled(leg_running)
+
+        # 遮阳棚：同上
+        self._awning_extend_btn.setEnabled(not estop_or_fault and state != AWNING_RETRACT_STATE)
+        self._awning_retract_btn.setEnabled(not estop_or_fault and state != AWNING_EXTEND_STATE)
+        self._awning_stop_btn.setEnabled(awning_running)
+
+        # 外部照明
+        ext_on = pd.ext_light_on if pd.ext_light_on is not None else False
+        self._ext_light_btn.blockSignals(True)
+        self._ext_light_btn.setChecked(ext_on)
+        self._ext_light_btn.setText("开" if ext_on else "关")
+        self._ext_light_btn.blockSignals(False)
+
+    def _on_leg_extend(self) -> None:
+        ctrl = get_pdu_controller()
+        if ctrl:
+            ctrl.leg_extend()
+
+    def _on_leg_retract(self) -> None:
+        ctrl = get_pdu_controller()
+        if ctrl:
+            ctrl.leg_retract()
+
+    def _on_leg_stop(self) -> None:
+        ctrl = get_pdu_controller()
+        if ctrl:
+            ctrl.leg_stop()
+
+    def _on_awning_extend(self) -> None:
+        ctrl = get_pdu_controller()
+        if ctrl:
+            ctrl.awning_extend()
+
+    def _on_awning_retract(self) -> None:
+        ctrl = get_pdu_controller()
+        if ctrl:
+            ctrl.awning_retract()
+
+    def _on_awning_stop(self) -> None:
+        ctrl = get_pdu_controller()
+        if ctrl:
+            ctrl.awning_stop()
+
+    def _on_ext_light_clicked(self, checked: bool) -> None:
+        ctrl = get_pdu_controller()
+        if ctrl:
+            ctrl.set_ext_light_on(checked)
