@@ -1,0 +1,26 @@
+# python
+__pycache__/
+*.py[cod]
+
+# venv
+.venv/
+venv/
+
+# logs & runtime
+logs/
+*.log
+
+# local config (do NOT commit)
+config.yaml
+*.local.yaml
+
+# OS / editor
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# history / accidental files
+.python_history
+.lesshst
+.gitconfig
