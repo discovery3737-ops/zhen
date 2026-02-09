@@ -1,0 +1,24 @@
+modbus:
+  # true: 不连接真实串口，使用模拟数据（推荐默认）
+  use_mock: true
+
+  # 真实硬件时把 use_mock 改为 false，并配置串口
+  port: /dev/ttyUSB0
+  baudrate: 19200
+  timeout_s: 1.0
+  retry: 1
+
+poll:
+  FAST_ms: 300
+  SLOW_ms: 1000
+  VERY_SLOW_ms: 5000
+
+ui:
+  language: zh_CN
+  width: 800
+  height: 480
+
+camera:
+  enabled: false
+  # 示例：["rtsp://user:pass@192.168.1.10:554/stream1"]
+  rtsp_urls: []
