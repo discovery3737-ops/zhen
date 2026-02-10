@@ -76,9 +76,14 @@ class MainWindow(QMainWindow):
         status_bar = self._build_status_bar(status_h)
         layout.addWidget(status_bar)
 
-        # 告警横幅
+        # 告警横幅（显式关键字参数，避免 tokens/parent 错位）
         if self._app_state and self._alarm_controller:
-            self._alarm_banner = AlarmBanner(self._app_state, self._alarm_controller, tokens=t, parent=self)
+            self._alarm_banner = AlarmBanner(
+                self._app_state,
+                self._alarm_controller,
+                tokens=self._tokens,
+                parent=self,
+            )
             layout.addWidget(self._alarm_banner)
 
         # 中间内容区

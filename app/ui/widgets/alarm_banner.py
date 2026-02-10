@@ -47,7 +47,7 @@ class AlarmBanner(QFrame):
         layout = QHBoxLayout(self)
         self._apply_tokens(layout)
         self._label = QLabel("")
-        self._label.setWordWrap(True)
+        self._label.setWordWrap(False)
         self._label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self._label, 1)
         self._ack_btn = QPushButton("确认")
@@ -55,9 +55,12 @@ class AlarmBanner(QFrame):
             self._ack_btn.setMinimumHeight(tokens.btn_h)
         else:
             self._ack_btn.setMinimumHeight(44)
+        self._ack_btn.clicked.connect(self._on_ack)
         layout.addWidget(self._ack_btn)
 
         app_state.alarms_changed.connect(self._on_alarms_changed)
+        if tokens:
+            self.setFixedHeight(tokens.btn_h + tokens.gap * 2)
         self.hide()
 
     def _apply_tokens(self, layout: QHBoxLayout) -> None:
@@ -75,6 +78,7 @@ class AlarmBanner(QFrame):
         if layout:
             self._apply_tokens(layout)
         self._ack_btn.setMinimumHeight(tokens.btn_h)
+        self.setFixedHeight(tokens.btn_h + tokens.gap * 2)
 
     def _on_alarms_changed(self, alarms: list) -> None:
         top = _top_alarm(alarms)
@@ -84,7 +88,9 @@ class AlarmBanner(QFrame):
             self.setProperty("severity", "")
             return
         self._current = top
-        self._label.setText(f"{top.title}: {top.message}")
+        raw = f"{top.title}: {top.message}"
+        max_len = 60
+        self._label.setText(raw if len(raw) <= max_len else raw[: max_len - 3] + "...")
         # QSS 通过 property severity 区分颜色：info(绿) / warn(黄) / critical(红)
         self.setProperty("severity", top.severity.value.lower())
         self.style().unpolish(self)

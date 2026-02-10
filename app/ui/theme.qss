@@ -543,3 +543,11 @@ QPushButton#cameraSourceBtn {
     min-height: {{BTN_H}}px;
     min-width: {{ICON_BTN_H}}px;
 }
+
+QPushButton#cameraModeBtn {
+    min-height: {{BTN_H}}px;
+}
+
+QLabel#cameraStatusLabel {
+    font-size: {{FONT_SMALL}}px;
+}
