@@ -37,6 +37,7 @@ if "GST_DEBUG" not in os.environ:
 class StateUpdateBridge(QObject):
     """供 ModbusMaster 工作线程发出状态更新，由主线程执行 app_state.update，避免持锁卡死主界面。"""
     state_updates_ready = pyqtSignal(object)  # dict，即 update(**d) 的 kwargs
+    verify_done = pyqtSignal(bool, object)  # success, user_data（写后回读确认结果）
 
     def __init__(self, app_state, parent=None):
         super().__init__(parent)

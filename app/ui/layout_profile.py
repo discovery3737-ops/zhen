@@ -72,18 +72,26 @@ _WXGA = LayoutTokens(
 )
 
 
-def get_tokens(app: "QApplication | None" = None) -> LayoutTokens:
-    """根据主屏分辨率获取 LayoutTokens。app 可为 None，内部用 QApplication.instance()。"""
-    from PyQt6.QtWidgets import QApplication
-    from PyQt6.QtGui import QGuiApplication
+def get_tokens(
+    app: "QApplication | None" = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> LayoutTokens:
+    """根据分辨率获取 LayoutTokens。优先使用 width/height（来自 config），否则用 primaryScreen。"""
+    w, h = None, None
+    if width is not None and height is not None:
+        w, h = width, height
+    else:
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtGui import QGuiApplication
 
-    qapp = app if app is not None else QApplication.instance()
-    if qapp is None:
+        qapp = app if app is not None else QApplication.instance()
+        if qapp is not None:
+            screen = QGuiApplication.primaryScreen()
+            if screen is not None:
+                size = screen.size()
+                w, h = size.width(), size.height()
+    if w is None or h is None:
         return _WVGA
-    screen = QGuiApplication.primaryScreen()
-    if screen is None:
-        return _WVGA
-    size = screen.size()
-    w, h = size.width(), size.height()
     profile = detect_profile(w, h)
     return _WXGA if profile == "WXGA" else _WVGA

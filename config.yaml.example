@@ -1,24 +1,39 @@
-modbus:
-  # true: 不连接真实串口，使用模拟数据（推荐默认）
-  use_mock: true
+# 复制为 config.yaml 后按需修改。缺项使用默认值，无 config.yaml 亦可运行。
 
-  # 真实硬件时把 use_mock 改为 false，并配置串口
-  port: /dev/ttyUSB0
-  baudrate: 19200
-  timeout_s: 1.0
-  retry: 1
-
-poll:
-  FAST_ms: 300
-  SLOW_ms: 1000
-  VERY_SLOW_ms: 5000
+display:
+  width: 800
+  height: 480
+  fullscreen: true
+  nav_button_min_size: 40
 
 ui:
   language: zh_CN
-  width: 800
-  height: 480
+  theme_mode: light
+  brightness: 80
+  # 开发预览用，如 [800, 480]；未配置则按真实屏幕
+  # force_resolution: [800, 480]
+
+modbus:
+  # true: 不连接真实串口，使用模拟数据（推荐默认）
+  use_mock: true
+  # 真实硬件时 use_mock: false，并配置串口
+  port: /dev/ttyUSB0
+  baudrate: 19200
+  parity: N
+  stopbits: 1
+  timeout: 0.2
+
+poll:
+  FAST_MS: 300
+  SLOW_MS: 1000
+  VERY_SLOW_MS: 5000
 
 camera:
-  enabled: false
-  # 示例：["rtsp://user:pass@192.168.1.10:554/stream1"]
-  rtsp_urls: []
+  rtsp_urls:
+    cam1: ""
+    cam2: ""
+    cam3: ""
+    cam4: ""
+    cam5: ""
+    cam6: ""
+    bird: ""

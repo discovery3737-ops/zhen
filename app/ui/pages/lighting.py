@@ -10,12 +10,15 @@ from PyQt6.QtWidgets import (
     QSlider,
     QScrollArea,
     QGridLayout,
+    QMessageBox,
 )
 from PyQt6.QtCore import Qt, QTimer
 
 from app.ui.pages.base import PageBase
 from app.ui.widgets import CompactToggleRow, TwoColumnFormRow
 from app.devices.lighting import get_lighting_controller
+
+_LIGHTING_SLAVE_ID = 3
 
 
 class LightingPage(PageBase):
@@ -132,38 +135,62 @@ class LightingPage(PageBase):
         self._strip_slider.blockSignals(False)
         self._strip_value_label.setText(str(bright))
 
+    def _ensure_online_then_write(self, slave_id: int) -> bool:
+        """写入前检查从站是否在线，离线则提示并返回 False。"""
+        if not self._app_state:
+            return True
+        comm = self._app_state.get_snapshot().comm.get(slave_id)
+        if not (comm and comm.online):
+            QMessageBox.warning(self, "设备离线", "设备离线，无法写入。")
+            return False
+        return True
+
     def _on_main_clicked(self, checked: bool) -> None:
+        if not self._ensure_online_then_write(_LIGHTING_SLAVE_ID):
+            return
         ctrl = get_lighting_controller()
         if ctrl:
             ctrl.set_main(checked)
 
     def _on_night_clicked(self, checked: bool) -> None:
+        if not self._ensure_online_then_write(_LIGHTING_SLAVE_ID):
+            return
         ctrl = get_lighting_controller()
         if ctrl:
             ctrl.set_night(checked)
 
     def _on_reading_clicked(self, checked: bool) -> None:
+        if not self._ensure_online_then_write(_LIGHTING_SLAVE_ID):
+            return
         ctrl = get_lighting_controller()
         if ctrl:
             ctrl.set_reading(checked)
 
     def _on_strip_clicked(self, checked: bool) -> None:
+        if not self._ensure_online_then_write(_LIGHTING_SLAVE_ID):
+            return
         ctrl = get_lighting_controller()
         if ctrl:
             ctrl.set_strip_on(checked)
 
     def _on_strip_slider_changed(self, value: int) -> None:
         self._strip_value_label.setText(str(value))
+        if not self._ensure_online_then_write(_LIGHTING_SLAVE_ID):
+            return
         ctrl = get_lighting_controller()
         if ctrl:
             ctrl.set_strip_brightness(value)
 
     def _on_sleep_clicked(self) -> None:
+        if not self._ensure_online_then_write(_LIGHTING_SLAVE_ID):
+            return
         ctrl = get_lighting_controller()
         if ctrl:
             ctrl.scene_sleep_pulse()
 
     def _on_reading_scene_clicked(self) -> None:
+        if not self._ensure_online_then_write(_LIGHTING_SLAVE_ID):
+            return
         ctrl = get_lighting_controller()
         if ctrl:
             ctrl.scene_reading_pulse()

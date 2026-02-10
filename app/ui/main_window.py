@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
         self._app_state = app_state
         self._alarm_controller = alarm_controller
         self._video_manager = video_manager
-        self._tokens: LayoutTokens = get_tokens()
+        self._tokens: LayoutTokens = self._resolve_layout_tokens()
         logger.info("布局 profile: %s", self._tokens.profile)
         self._stack = QStackedWidget()
         self._tab_buttons: list[QToolButton] = []
@@ -96,6 +96,15 @@ class MainWindow(QMainWindow):
         if cfg.fullscreen:
             esc_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
             esc_shortcut.activated.connect(self._on_escape_fullscreen)
+
+    def _resolve_layout_tokens(self) -> LayoutTokens:
+        """从 config 获取目标分辨率并选用对应 profile。ui.force_resolution 优先，否则用 display。"""
+        cfg = get_config()
+        if cfg.ui.force_resolution and len(cfg.ui.force_resolution) >= 2:
+            w, h = cfg.ui.force_resolution[0], cfg.ui.force_resolution[1]
+        else:
+            w, h = cfg.display.width, cfg.display.height
+        return get_tokens(width=w, height=h)
 
     def _build_status_bar(self, height: int) -> QFrame:
         """StatusBar：时间、SOC、告警图标、通讯图标。"""
@@ -179,10 +188,12 @@ class MainWindow(QMainWindow):
 
     def _build_tab_bar(self, t: LayoutTokens) -> QWidget:
         tab_bar = QWidget(objectName="tabBar")
-        h = max(t.tab_bar_h, t.icon_btn_h + 8)
+        top_m, bot_m = 4, 4  # 减小 margin，避免 WVGA 下 content_h < icon_btn_h 导致裁切
+        content_needed = t.icon_btn_h
+        h = max(t.tab_bar_h, content_needed + top_m + bot_m)
         tab_bar.setFixedHeight(h)
         ly = QHBoxLayout(tab_bar)
-        ly.setContentsMargins(t.gap, 6, t.gap, 6)
+        ly.setContentsMargins(t.gap, top_m, t.gap, bot_m)
         ly.setSpacing(t.gap)
 
         style = self.style()
@@ -195,10 +206,11 @@ class MainWindow(QMainWindow):
             btn.setIconSize(QSize(icon_sz, icon_sz))
             btn.setMinimumHeight(t.icon_btn_h)
             btn.setMinimumWidth(t.icon_btn_h)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             btn.setCheckable(True)
             btn.setProperty("tab_index", idx)
             btn.clicked.connect(lambda checked, i=idx: self._on_tab_click(i))
-            ly.addWidget(btn)
+            ly.addWidget(btn, 1)  # stretch=1，5 个 Tab 等宽铺满
             self._tab_buttons.append(btn)
 
         return tab_bar

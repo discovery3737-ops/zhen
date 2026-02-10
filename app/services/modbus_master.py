@@ -315,16 +315,39 @@ def _build_read_plan(spec: dict, poll_group: str) -> list[tuple[str, str, int, i
     return plan
 
 
-# ---------- 写队列 ----------
+# ---------- 写队列与写后回读确认 ----------
 
 class WriteRequest:
-    __slots__ = ("slave", "kind", "addr0", "value")
+    __slots__ = ("slave", "kind", "addr0", "value", "verify_timeout_s", "verify_user_data")
 
-    def __init__(self, slave: int, kind: str, addr0: int, value: Any):
+    def __init__(
+        self,
+        slave: int,
+        kind: str,
+        addr0: int,
+        value: Any,
+        verify_timeout_s: float = 0,
+        verify_user_data: Any = None,
+    ):
         self.slave = slave
         self.kind = kind
         self.addr0 = addr0
         self.value = value
+        self.verify_timeout_s = verify_timeout_s
+        self.verify_user_data = verify_user_data
+
+
+# 写后回读待确认项：slave/point/expected/deadline/user_data
+class _PendingVerify:
+    __slots__ = ("slave", "kind", "addr0", "expected", "deadline_ts", "user_data")
+
+    def __init__(self, slave: int, kind: str, addr0: int, expected: Any, deadline_ts: float, user_data: Any):
+        self.slave = slave
+        self.kind = kind
+        self.addr0 = addr0
+        self.expected = expected
+        self.deadline_ts = deadline_ts
+        self.user_data = user_data
 
 
 # ---------- ModbusMaster ----------
@@ -356,6 +379,9 @@ class ModbusMaster:
         # 每 slave 统计
         self._slave_stats: dict[int, dict[str, Any]] = {}
         self._last_comm: dict[int, dict[str, Any]] = {}
+        # 写后回读待确认列表（主循环内检查，不阻塞 UI）
+        self._pending_verifies: list[_PendingVerify] = []
+        self._pending_lock = threading.Lock()
 
     def _slave_stat(self, sid: int) -> dict[str, Any]:
         if sid not in self._slave_stats:
@@ -375,11 +401,29 @@ class ModbusMaster:
             return False
         return True
 
-    def write_coil(self, slave: int, addr0: int, value: bool | int) -> None:
-        self._write_queue.put(WriteRequest(slave, "coil", addr0, value))
+    def write_coil(
+        self,
+        slave: int,
+        addr0: int,
+        value: bool | int,
+        verify_timeout_s: float = 0,
+        verify_user_data: Any = None,
+    ) -> None:
+        self._write_queue.put(
+            WriteRequest(slave, "coil", addr0, value, verify_timeout_s, verify_user_data)
+        )
 
-    def write_holding(self, slave: int, addr0: int, value: int) -> None:
-        self._write_queue.put(WriteRequest(slave, "holding", addr0, value))
+    def write_holding(
+        self,
+        slave: int,
+        addr0: int,
+        value: int,
+        verify_timeout_s: float = 0,
+        verify_user_data: Any = None,
+    ) -> None:
+        self._write_queue.put(
+            WriteRequest(slave, "holding", addr0, value, verify_timeout_s, verify_user_data)
+        )
 
     def _drain_writes(self) -> None:
         while True:
@@ -398,6 +442,22 @@ class ModbusMaster:
                 s["success_count"] = s.get("success_count", 0) + 1
                 s["last_rtt_ms"] = rtt
                 s["last_ok_ts"] = time.time()
+                # 写后回读确认：记录 pending，由轮询后检查
+                timeout_s = getattr(req, "verify_timeout_s", 0) or 0
+                user_data = getattr(req, "verify_user_data", None)
+                if timeout_s > 0 and user_data is not None:
+                    expected = (1 if req.value else 0) if req.kind == "coil" else req.value
+                    with self._pending_lock:
+                        self._pending_verifies.append(
+                            _PendingVerify(
+                                req.slave,
+                                req.kind,
+                                req.addr0,
+                                expected,
+                                time.time() + timeout_s,
+                                user_data,
+                            )
+                        )
             except TransportError as e:
                 logger.debug("写失败 slave=%s addr=%s: %s", req.slave, req.addr0, e)
                 s = self._slave_stat(req.slave)
@@ -454,13 +514,37 @@ class ModbusMaster:
             for k in ("coils", "di", "ir", "hr"):
                 acc[sid][k].update(data[k])
 
+    def _check_pending_verifies(self, accumulated: dict[str, dict[str, dict[int, int]]]) -> None:
+        """轮询更新 snapshot 后检查待确认项：达到 expected 则成功回调，超时则失败回调。主线程通过 bridge.verify_done 收结果。"""
+        now = time.time()
+        done: list[tuple[bool, Any]] = []
+        with self._pending_lock:
+            remaining = []
+            for p in self._pending_verifies:
+                sid = str(p.slave)
+                raw_key = "coils" if p.kind == "coil" else "hr"
+                current = (accumulated.get(sid) or {}).get(raw_key, {}).get(p.addr0)
+                if current is not None and current == p.expected:
+                    done.append((True, p.user_data))
+                    continue
+                if now >= p.deadline_ts:
+                    done.append((False, p.user_data))
+                    continue
+                remaining.append(p)
+            self._pending_verifies = remaining
+        bridge = self._update_bridge
+        if bridge is not None and hasattr(bridge, "verify_done"):
+            for success, user_data in done:
+                bridge.verify_done.emit(success, user_data)
+
     def _update_comm_status(self) -> None:
         comm: dict[int, dict[str, Any]] = {}
         for sid in range(1, 10):
             s = self._slave_stats.get(sid, {})
             fail_count = s.get("fail_count", 0)
             success_count = s.get("success_count", 0)
-            online = fail_count < OFFLINE_THRESHOLD
+            # 从未成功通信不算 online；且连续失败次数须低于阈值
+            online = success_count > 0 and fail_count < OFFLINE_THRESHOLD
             last_rtt = s.get("last_rtt_ms")
             last_ok_ts = s.get("last_ok_ts", 0.0)
             comm[sid] = {
@@ -507,6 +591,7 @@ class ModbusMaster:
                                 self._apply_update(**merged)
                     break
 
+            self._check_pending_verifies(accumulated)
             self._update_comm_status()
             self._stop.wait(timeout=0.1)
 
@@ -535,10 +620,17 @@ class ModbusMaster:
             snap = {k: dict(v) for k, v in self._slave_stats.items()}
         online = sum(
             1 for sid in range(1, 10)
-            if snap.get(sid, {}).get("fail_count", 0) < OFFLINE_THRESHOLD
+            if snap.get(sid, {}).get("success_count", 0) > 0
+            and snap.get(sid, {}).get("fail_count", 0) < OFFLINE_THRESHOLD
         )
         total_errors = sum(snap.get(sid, {}).get("fail_count", 0) for sid in range(1, 10))
         return {"online_slaves": online, "total_errors": total_errors}
+
+    def is_slave_online(self, slave_id: int) -> bool:
+        """判断从站是否在线：success_count>0 且 fail_count<阈值。"""
+        with self._stats_lock:
+            s = self._slave_stats.get(slave_id, {})
+        return s.get("success_count", 0) > 0 and s.get("fail_count", 0) < OFFLINE_THRESHOLD
 
     def restart_with_config(self, new_config: Any) -> None:
         """

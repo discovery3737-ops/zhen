@@ -9,12 +9,15 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QGridLayout,
+    QMessageBox,
 )
 from PyQt6.QtCore import Qt, QTimer
 
 from app.ui.pages.base import PageBase
 from app.ui.widgets.long_press_button import LongPressButton
 from app.devices.pdu import get_pdu_controller
+
+_PDU_SLAVE_ID = 8
 
 # PDU STATE: 0=Idle, 1=LegExt, 2=LegRet, 3=AwningExt, 4=AwningRet, 5=EStop, 6=Fault
 PDU_STATE_NAMES = {
@@ -272,37 +275,60 @@ class ExteriorPage(PageBase):
         self._ext_light_btn.setText("开" if ext_on else "关")
         self._ext_light_btn.blockSignals(False)
 
+    def _ensure_pdu_online(self) -> bool:
+        if not self._app_state:
+            return True
+        comm = self._app_state.get_snapshot().comm.get(_PDU_SLAVE_ID)
+        if not (comm and comm.online):
+            QMessageBox.warning(self, "设备离线", "设备离线，无法写入。")
+            return False
+        return True
+
     def _on_leg_extend(self) -> None:
+        if not self._ensure_pdu_online():
+            return
         ctrl = get_pdu_controller()
         if ctrl:
             ctrl.leg_extend()
 
     def _on_leg_retract(self) -> None:
+        if not self._ensure_pdu_online():
+            return
         ctrl = get_pdu_controller()
         if ctrl:
             ctrl.leg_retract()
 
     def _on_leg_stop(self) -> None:
+        if not self._ensure_pdu_online():
+            return
         ctrl = get_pdu_controller()
         if ctrl:
             ctrl.leg_stop()
 
     def _on_awning_extend(self) -> None:
+        if not self._ensure_pdu_online():
+            return
         ctrl = get_pdu_controller()
         if ctrl:
             ctrl.awning_extend()
 
     def _on_awning_retract(self) -> None:
+        if not self._ensure_pdu_online():
+            return
         ctrl = get_pdu_controller()
         if ctrl:
             ctrl.awning_retract()
 
     def _on_awning_stop(self) -> None:
+        if not self._ensure_pdu_online():
+            return
         ctrl = get_pdu_controller()
         if ctrl:
             ctrl.awning_stop()
 
     def _on_ext_light_clicked(self, checked: bool) -> None:
+        if not self._ensure_pdu_online():
+            return
         ctrl = get_pdu_controller()
         if ctrl:
             ctrl.set_ext_light_on(checked)

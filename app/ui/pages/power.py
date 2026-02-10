@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QMessageBox,
 )
 from PyQt6.QtCore import Qt, QTimer
 
@@ -15,6 +16,8 @@ from app.ui.pages.base import PageBase
 from app.ui.widgets.long_press_button import LongPressButton
 from app.ui.layout_profile import LayoutTokens, get_tokens
 from app.devices.pdu import get_pdu_controller
+
+_PDU_SLAVE_ID = 8
 
 INV_STATE_NAMES = {0: "关", 1: "开", 2: "待机", 3: "故障"}
 SOC_WARN_THRESH = 200   # 20%
@@ -353,12 +356,25 @@ class PowerPage(PageBase):
             self._soc_hint.setText("")
             _apply_severity(self._soc_hint, None)
 
+    def _ensure_pdu_online(self) -> bool:
+        if not self._app_state:
+            return True
+        comm = self._app_state.get_snapshot().comm.get(_PDU_SLAVE_ID)
+        if not (comm and comm.online):
+            QMessageBox.warning(self, "设备离线", "设备离线，无法写入。")
+            return False
+        return True
+
     def _on_ac_set(self, on: bool) -> None:
+        if not self._ensure_pdu_online():
+            return
         ctrl = get_pdu_controller()
         if ctrl:
             ctrl.set_inv_ac_out_on(on)
 
     def _on_fridge_set(self, on: bool) -> None:
+        if not self._ensure_pdu_online():
+            return
         ctrl = get_pdu_controller()
         if ctrl:
             ctrl.set_fridge_24v_on(on)

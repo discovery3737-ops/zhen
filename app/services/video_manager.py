@@ -9,6 +9,8 @@ import threading
 import time
 from typing import Callable
 
+from app.core.sanitize import mask_url, validate_rtsp_url
+
 logger = logging.getLogger(__name__)
 
 _GST_AVAILABLE = False
@@ -76,7 +78,7 @@ class VideoManager:
 
     def start(self, url: str, win_id: int | None) -> None:
         """启动或切换到指定 RTSP 流，渲染到 win_id（Qt 的 winId()）"""
-        logger.debug("[VideoManager] start url=%s win_id=%s", url[:80] if url else "", win_id)
+        logger.debug("[VideoManager] start url=%s win_id=%s", mask_url(url, keep_path=False), win_id)
         if not _try_import_gst() or not _GST_AVAILABLE:
             logger.warning("[VideoManager] GStreamer 不可用，降级占位")
             self._emit_placeholder("GStreamer 不可用")
@@ -98,7 +100,7 @@ class VideoManager:
 
     def switch(self, url: str) -> None:
         """切换 URL（保持当前 win_id）"""
-        logger.debug("[VideoManager] switch url=%s", url[:80] if url else "")
+        logger.debug("[VideoManager] switch url=%s", mask_url(url, keep_path=False))
         self._current_url = url
         self._stop_requested = False
         self._cmd_queue.put(("switch",))
@@ -134,7 +136,7 @@ class VideoManager:
         def on_timer():
             self._reconnect_timer_src = None
             if not self._stop_requested and self._current_url:
-                logger.info("自动重连 RTSP: %s", self._current_url[:60])
+                logger.info("自动重连 RTSP: %s", mask_url(self._current_url, keep_path=False))
                 self._do_start_pipeline()
             return False
 
@@ -182,9 +184,15 @@ class VideoManager:
                          bool(_Gst), self._stop_requested, bool(self._current_url))
             return
 
+        ok, err = validate_rtsp_url(self._current_url)
+        if not ok:
+            logger.warning("RTSP URL 不合法，跳过播放: %s — %s",
+                           mask_url(self._current_url, keep_path=False), err)
+            return
+
         self._do_stop_pipeline()
         logger.debug("[VideoManager] 创建 pipeline url=%s win_id=%s",
-                     self._current_url[:60], self._current_win_id)
+                     mask_url(self._current_url, keep_path=False), self._current_win_id)
 
         # rtspsrc ! decodebin ! videoconvert ! xvimagesink (X11 overlay)
         # 备选: ximagesink 或 autovideosink（无 overlay）
@@ -252,7 +260,7 @@ class VideoManager:
 
         self._pipeline.set_state(_Gst.State.PLAYING)
         self._emit_status("playing")
-        logger.info("RTSP 播放已启动: %s", self._current_url[:60])
+        logger.info("RTSP 播放已启动: %s", mask_url(self._current_url, keep_path=False))
 
     def _on_bus_error(self, bus, msg) -> None:
         err, dbg = msg.parse_error()

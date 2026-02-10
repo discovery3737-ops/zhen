@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QGridLayout,
+    QMessageBox,
 )
 from PyQt6.QtCore import Qt, QTimer
 
@@ -18,6 +19,9 @@ from app.ui.pages.base import PageBase
 from app.ui.widgets.long_press_button import LongPressButton
 from app.devices.hvac import get_hvac_controller
 from app.devices.webasto import get_webasto_controller
+
+_HVAC_SLAVE_ID = 1
+_WEBASTO_SLAVE_ID = 2
 
 # Slave01 MODE: Off=0, Cool=1, Vent=2, Auto=3
 MODE_OFF, MODE_COOL, MODE_VENT, MODE_AUTO = 0, 1, 2, 3
@@ -402,14 +406,25 @@ class HvacPage(PageBase):
         )
         self._web_fault_label.setText(str(w.web_fault_code) if w.web_fault_code is not None else "--")
 
+    def _ensure_online(self, slave_id: int) -> bool:
+        if not self._app_state:
+            return True
+        comm = self._app_state.get_snapshot().comm.get(slave_id)
+        if not (comm and comm.online):
+            QMessageBox.warning(self, "设备离线", "设备离线，无法写入。")
+            return False
+        return True
+
     def _on_mode_changed(self, index: int) -> None:
         val = self._mode_combo.currentData()
-        if val is not None:
+        if val is not None and self._ensure_online(_HVAC_SLAVE_ID):
             ctrl = get_hvac_controller()
             if ctrl:
                 ctrl.set_mode(val)
 
     def _on_temp_down(self) -> None:
+        if not self._ensure_online(_HVAC_SLAVE_ID):
+            return
         snap = self._app_state.get_snapshot() if self._app_state else None
         cur = snap.hvac.target_temp_x10 if snap and snap.hvac.target_temp_x10 is not None else 240
         new = max(150, cur - 5)
@@ -418,6 +433,8 @@ class HvacPage(PageBase):
             ctrl.set_target_temp_x10(new)
 
     def _on_temp_up(self) -> None:
+        if not self._ensure_online(_HVAC_SLAVE_ID):
+            return
         snap = self._app_state.get_snapshot() if self._app_state else None
         cur = snap.hvac.target_temp_x10 if snap and snap.hvac.target_temp_x10 is not None else 240
         new = min(350, cur + 5)
@@ -427,36 +444,50 @@ class HvacPage(PageBase):
 
     def _on_temp_slider_changed(self, value: int) -> None:
         self._temp_label.setText(f"{value / 10:.1f} °C")
+        if not self._ensure_online(_HVAC_SLAVE_ID):
+            return
         ctrl = get_hvac_controller()
         if ctrl:
             ctrl.set_target_temp_x10(value)
 
     def _on_evap_level_changed(self, value: int) -> None:
+        if not self._ensure_online(_HVAC_SLAVE_ID):
+            return
         ctrl = get_hvac_controller()
         if ctrl:
             ctrl.set_evap_fan_level(value)
 
     def _on_cond_level_changed(self, value: int) -> None:
+        if not self._ensure_online(_HVAC_SLAVE_ID):
+            return
         ctrl = get_hvac_controller()
         if ctrl:
             ctrl.set_cond_fan_level(value)
 
     def _on_ac_enable_clicked(self, checked: bool) -> None:
+        if not self._ensure_online(_HVAC_SLAVE_ID):
+            return
         ctrl = get_hvac_controller()
         if ctrl:
             ctrl.set_ac_enable(checked)
 
     def _on_comp_enable_confirmed(self) -> None:
+        if not self._ensure_online(_HVAC_SLAVE_ID):
+            return
         ctrl = get_hvac_controller()
         if ctrl:
             ctrl.set_comp_enable(True)
 
     def _on_heater_set(self, on: bool) -> None:
+        if not self._ensure_online(_WEBASTO_SLAVE_ID):
+            return
         ctrl = get_webasto_controller()
         if ctrl:
             ctrl.set_heater_on(on)
 
     def _on_wt_down(self) -> None:
+        if not self._ensure_online(_WEBASTO_SLAVE_ID):
+            return
         snap = self._app_state.get_snapshot() if self._app_state else None
         cur = snap.webasto.target_water_temp_x10 if snap and snap.webasto.target_water_temp_x10 is not None else 600
         new = max(300, cur - 5)
@@ -465,6 +496,8 @@ class HvacPage(PageBase):
             ctrl.set_target_water_temp_x10(new)
 
     def _on_wt_up(self) -> None:
+        if not self._ensure_online(_WEBASTO_SLAVE_ID):
+            return
         snap = self._app_state.get_snapshot() if self._app_state else None
         cur = snap.webasto.target_water_temp_x10 if snap and snap.webasto.target_water_temp_x10 is not None else 600
         new = min(850, cur + 5)
@@ -474,11 +507,15 @@ class HvacPage(PageBase):
 
     def _on_wt_slider_changed(self, value: int) -> None:
         self._wt_label.setText(f"{value / 10:.1f} °C")
+        if not self._ensure_online(_WEBASTO_SLAVE_ID):
+            return
         ctrl = get_webasto_controller()
         if ctrl:
             ctrl.set_target_water_temp_x10(value)
 
     def _on_pump_clicked(self, checked: bool) -> None:
+        if not self._ensure_online(_WEBASTO_SLAVE_ID):
+            return
         ctrl = get_webasto_controller()
         if ctrl:
             ctrl.set_hydronic_pump_on(checked)
