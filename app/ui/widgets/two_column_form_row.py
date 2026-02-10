@@ -44,7 +44,8 @@ class TwoColumnFormRow(QFrame):
         lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(lbl)
 
-        widget.setObjectName("twoColumnFormWidget")
+        if not widget.objectName():
+            widget.setObjectName("twoColumnFormWidget")
         layout.addWidget(widget, 1)
 
     def set_tokens(self, tokens: "LayoutTokens") -> None:

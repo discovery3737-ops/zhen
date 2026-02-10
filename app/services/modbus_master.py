@@ -376,17 +376,19 @@ class ModbusMaster:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._stats_lock = threading.Lock()
-        # 每 slave 统计
-        self._slave_stats: dict[int, dict[str, Any]] = {}
+        # 每 slave 统计：预初始化 1..9，避免运行中插入新 key 导致 "dictionary changed size during iteration"
+        _default_stat = {"success_count": 0, "fail_count": 0, "last_rtt_ms": None, "last_ok_ts": 0.0}
+        self._slave_stats = {sid: dict(_default_stat) for sid in range(1, 10)}
         self._last_comm: dict[int, dict[str, Any]] = {}
         # 写后回读待确认列表（主循环内检查，不阻塞 UI）
         self._pending_verifies: list[_PendingVerify] = []
         self._pending_lock = threading.Lock()
 
     def _slave_stat(self, sid: int) -> dict[str, Any]:
-        if sid not in self._slave_stats:
-            self._slave_stats[sid] = {"success_count": 0, "fail_count": 0, "last_rtt_ms": None, "last_ok_ts": 0.0}
-        return self._slave_stats[sid]
+        """返回已有 dict，不插入新 key；若 key 不存在则返回默认结构但不写入。"""
+        if sid in self._slave_stats:
+            return self._slave_stats[sid]
+        return {"success_count": 0, "fail_count": 0, "last_rtt_ms": None, "last_ok_ts": 0.0}
 
     def _apply_update(self, **kwargs: Any) -> None:
         if self._update_bridge is not None and hasattr(self._update_bridge, "state_updates_ready"):
@@ -615,7 +617,7 @@ class ModbusMaster:
                 logger.debug("关闭 transport 时异常: %s", e)
 
     def get_link_summary(self) -> dict[str, int]:
-        """返回链接摘要：在线 slave 数、总错误数，供 Settings 页面显示。"""
+        """返回链接摘要：在线 slave 数、总错误数，供 Settings 页面显示。锁内复制后遍历，不抛异常。"""
         with self._stats_lock:
             snap = {k: dict(v) for k, v in self._slave_stats.items()}
         online = sum(

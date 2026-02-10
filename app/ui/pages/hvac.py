@@ -83,25 +83,45 @@ class HvacPage(PageBase):
             if item.widget():
                 item.widget().deleteLater()
 
-        scroll = QScrollArea()
+        g, p = (t.gap if t else 8), (t.pad_page if t else 10)
+
+        # 固定头部：标题 + 关键状态（HP/LP/冷媒）
+        header = QWidget(objectName="pageHeader")
+        header_ly = QVBoxLayout(header)
+        header_ly.setSpacing(g // 2)
+        header_ly.setContentsMargins(p, p, p, g)
+        title = QLabel("空调")
+        title.setObjectName("pageTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_ly.addWidget(title)
+        row_lights = QHBoxLayout()
+        row_lights.addWidget(QLabel("HP:", objectName="small"))
+        self._hp_ok = StatusLight()
+        row_lights.addWidget(self._hp_ok)
+        row_lights.addWidget(QLabel("LP:", objectName="small"))
+        self._lp_ok = StatusLight()
+        row_lights.addWidget(self._lp_ok)
+        row_lights.addWidget(QLabel("冷媒:", objectName="small"))
+        self._refrig_ok = StatusLight()
+        row_lights.addWidget(self._refrig_ok)
+        row_lights.addStretch()
+        header_ly.addLayout(row_lights)
+        layout.addWidget(header)
+
+        scroll = QScrollArea(objectName="pageScrollArea")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner = QWidget()
         ly = QVBoxLayout(inner)
-        ly.setSpacing(t.gap if t else 8)
-        ly.setContentsMargins(t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10)
-
-        title = QLabel("空调")
-        title.setObjectName("pageTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ly.addWidget(title)
+        ly.setSpacing(g)
+        ly.setContentsMargins(p, g, p, p)
 
         # Card 1: HVAC 快速控制
         card1 = self._build_card1_hvac_quick()
         ly.addWidget(card1)
 
-        # Card 2: 危险控制 + 三色状态灯
+        # Card 2: 危险控制（三色灯已移至头部）
         card2 = self._build_card2_hvac_danger()
         ly.addWidget(card2)
 
@@ -109,14 +129,14 @@ class HvacPage(PageBase):
         card3 = self._build_card3_webasto()
         ly.addWidget(card3)
 
-        # 可折叠：实际PWM / 故障码详情（默认收起）
+        # 可折叠：实际PWM / 故障码详情（WVGA 默认收起）
         self._advanced_widget, self._advanced_btn = self._build_collapsible_advanced()
         ly.addWidget(self._advanced_btn)
         ly.addWidget(self._advanced_widget)
 
         ly.addStretch()
         scroll.setWidget(inner)
-        layout.addWidget(scroll)
+        layout.addWidget(scroll, 1)
 
         if app_state:
             app_state.changed.connect(
@@ -189,7 +209,7 @@ class HvacPage(PageBase):
         return card
 
     def _build_card2_hvac_danger(self) -> QFrame:
-        """Card 2: COMP_ENABLE LongPress、AC_ENABLE 开关 + HP/LP/冷媒 三色灯"""
+        """Card 2: COMP_ENABLE LongPress、AC_ENABLE 开关（三色灯在页面头部）"""
         t = self._tokens
         g, p, bh, bhk = (t.gap if t else 10), (t.pad_card if t else 10), (t.btn_h if t else 44), (t.btn_h_key if t else 52)
         card = QFrame(objectName="card")
@@ -218,20 +238,6 @@ class HvacPage(PageBase):
         self._comp_enable.confirmed.connect(self._on_comp_enable_confirmed)
         row_comp.addWidget(self._comp_enable, 1)
         ly.addLayout(row_comp)
-
-        # 三色状态灯
-        row_lights = QHBoxLayout()
-        row_lights.addWidget(QLabel("HP:"))
-        self._hp_ok = StatusLight()
-        row_lights.addWidget(self._hp_ok)
-        row_lights.addWidget(QLabel("LP:"))
-        self._lp_ok = StatusLight()
-        row_lights.addWidget(self._lp_ok)
-        row_lights.addWidget(QLabel("冷媒:"))
-        self._refrig_ok = StatusLight()
-        row_lights.addWidget(self._refrig_ok)
-        row_lights.addStretch()
-        ly.addLayout(row_lights)
 
         return card
 
@@ -350,13 +356,20 @@ class HvacPage(PageBase):
         super().set_tokens(tokens)
         self._tokens = tokens
         layout = self.layout()
-        if layout and layout.count() > 0:
-            w = layout.itemAt(0).widget()
-            if isinstance(w, QScrollArea) and w.widget():
-                ly = w.widget().layout()
-                if ly:
-                    ly.setSpacing(tokens.gap)
-                    ly.setContentsMargins(tokens.pad_page, tokens.pad_page, tokens.pad_page, tokens.pad_page)
+        if layout and layout.count() >= 2:
+            header = layout.itemAt(0).widget()
+            if isinstance(header, QWidget) and header.layout():
+                header.layout().setSpacing(tokens.gap)
+                header.layout().setContentsMargins(
+                    tokens.pad_page, tokens.pad_page, tokens.pad_page, tokens.gap
+                )
+            scroll = layout.itemAt(1).widget()
+            if isinstance(scroll, QScrollArea) and scroll.widget() and scroll.widget().layout():
+                ly = scroll.widget().layout()
+                ly.setSpacing(tokens.gap)
+                ly.setContentsMargins(
+                    tokens.pad_page, tokens.gap, tokens.pad_page, tokens.pad_page
+                )
         for lp in self.findChildren(LongPressButton):
             lp.set_tokens(tokens)
 

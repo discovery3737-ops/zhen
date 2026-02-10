@@ -5,6 +5,9 @@ display:
   height: 480
   fullscreen: true
   nav_button_min_size: 40
+  # 硬件背光亮度 0~100（树莓派 7 寸 DSI，需配置 rpi_set_backlight + sudoers）
+  brightness_percent: 60
+  default_brightness_percent: 60
 
 ui:
   language: zh_CN
@@ -37,3 +40,12 @@ camera:
     cam5: ""
     cam6: ""
     bird: ""
+
+# 视频嵌入（树莓派 X11/Wayland）
+video:
+  # 优先后端: auto(按会话) | x11 | wayland
+  prefer_backend: auto
+  # GStreamer sink: auto | ximagesink | glimagesink | waylandsink | autovideosink
+  sink: auto
+  # true 时仅占位不尝试嵌入
+  force_no_embed: false

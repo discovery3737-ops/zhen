@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 _ROOT = Path(__file__).resolve().parent.parent.parent
 _CONFIG_PATH = _ROOT / "config.yaml"
 
+# 最近一次保存失败时的错误信息与路径（供 UI 弹窗展示）
+_last_save_error: str | None = None
+
 
 def _default_rtsp_urls() -> dict[str, str]:
     return {
@@ -65,6 +68,8 @@ class DisplayConfig:
     height: int = 480
     nav_button_min_size: int = 40
     fullscreen: bool = True  # 树莓派桌面默认全屏，无边框
+    brightness_percent: int = 60  # 硬件背光亮度 0~100（树莓派 7 寸 DSI）
+    default_brightness_percent: int = 60  # 恢复默认亮度时的目标值
 
 
 @dataclass
@@ -83,6 +88,21 @@ class AlarmThresholdsConfig:
 
 
 @dataclass
+class VideoConfig:
+    """视频嵌入配置（树莓派 X11/Wayland 等）"""
+    prefer_backend: str = "auto"   # auto | x11 | wayland
+    sink: str = "auto"             # auto | ximagesink | glimagesink | waylandsink | autovideosink
+    force_no_embed: bool = False   # true 时仅占位，不尝试嵌入
+
+
+@dataclass
+class SecurityConfig:
+    """维护 PIN 与会话（默认可运行，后续可做 PIN hash）"""
+    maintenance_pin: str = "1234"
+    session_timeout_s: int = 900
+
+
+@dataclass
 class AppConfig:
     """应用全局配置"""
     modbus: ModbusConfig = field(default_factory=ModbusConfig)
@@ -92,6 +112,8 @@ class AppConfig:
     display: DisplayConfig = field(default_factory=DisplayConfig)
     system: SystemConfig = field(default_factory=SystemConfig)
     alarm_thresholds: AlarmThresholdsConfig = field(default_factory=AlarmThresholdsConfig)
+    video: VideoConfig = field(default_factory=VideoConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
     dev_mode: bool = False
     theme_path: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent / "ui" / "theme.qss")
 
@@ -176,6 +198,10 @@ def _merge(config: AppConfig, data: dict[str, Any]) -> None:
             config.display.nav_button_min_size = int(d["nav_button_min_size"])
         if "fullscreen" in d:
             config.display.fullscreen = bool(d["fullscreen"])
+        if "brightness_percent" in d:
+            config.display.brightness_percent = max(0, min(100, int(d["brightness_percent"])))
+        if "default_brightness_percent" in d:
+            config.display.default_brightness_percent = max(0, min(100, int(d["default_brightness_percent"])))
 
     if "system" in data and isinstance(data["system"], dict) and "timezone" in data["system"]:
         config.system.timezone = str(data["system"]["timezone"])
@@ -190,6 +216,22 @@ def _merge(config: AppConfig, data: dict[str, Any]) -> None:
             config.alarm_thresholds.lpg_warn_lel_x10 = int(at["lpg_warn_lel_x10"])
         if "lpg_crit_lel_x10" in at:
             config.alarm_thresholds.lpg_crit_lel_x10 = int(at["lpg_crit_lel_x10"])
+
+    if "video" in data and isinstance(data["video"], dict):
+        v = data["video"]
+        if "prefer_backend" in v:
+            config.video.prefer_backend = str(v["prefer_backend"]).strip().lower() or "auto"
+        if "sink" in v:
+            config.video.sink = str(v["sink"]).strip().lower() or "auto"
+        if "force_no_embed" in v:
+            config.video.force_no_embed = bool(v["force_no_embed"])
+
+    if "security" in data and isinstance(data["security"], dict):
+        s = data["security"]
+        if "maintenance_pin" in s:
+            config.security.maintenance_pin = str(s["maintenance_pin"]).strip() or "1234"
+        if "session_timeout_s" in s:
+            config.security.session_timeout_s = max(60, int(s["session_timeout_s"]))
 
     if "dev_mode" in data:
         config.dev_mode = bool(data["dev_mode"])
@@ -247,6 +289,8 @@ def _config_to_dict(cfg: AppConfig) -> dict[str, Any]:
             "height": cfg.display.height,
             "nav_button_min_size": cfg.display.nav_button_min_size,
             "fullscreen": cfg.display.fullscreen,
+            "brightness_percent": cfg.display.brightness_percent,
+            "default_brightness_percent": cfg.display.default_brightness_percent,
         },
         "system": {
             "timezone": cfg.system.timezone,
@@ -257,16 +301,38 @@ def _config_to_dict(cfg: AppConfig) -> dict[str, Any]:
             "lpg_warn_lel_x10": cfg.alarm_thresholds.lpg_warn_lel_x10,
             "lpg_crit_lel_x10": cfg.alarm_thresholds.lpg_crit_lel_x10,
         },
+        "video": {
+            "prefer_backend": cfg.video.prefer_backend,
+            "sink": cfg.video.sink,
+            "force_no_embed": cfg.video.force_no_embed,
+        },
+        "security": {
+            "maintenance_pin": cfg.security.maintenance_pin,
+            "session_timeout_s": cfg.security.session_timeout_s,
+        },
         "dev_mode": cfg.dev_mode,
     }
 
 
+def get_config_path() -> str:
+    """返回 config.yaml 的绝对路径（供保存失败时提示用）。"""
+    return str(_CONFIG_PATH.resolve())
+
+
+def get_last_save_error() -> str | None:
+    """返回最近一次 save_config 失败时的错误摘要，成功或无失败记录时为 None。"""
+    return _last_save_error
+
+
 def save_config(config: AppConfig) -> bool:
-    """把当前配置写回 config.yaml，保留结构与可读性。失败记录日志并返回 False。"""
+    """把当前配置写回 config.yaml，保留结构与可读性。失败记录路径与异常并返回 False。"""
+    global _last_save_error
+    path_str = get_config_path()
     try:
         import yaml
     except ImportError:
-        logger.error("未安装 PyYAML，无法保存 config.yaml")
+        _last_save_error = "未安装 PyYAML，无法保存配置"
+        logger.error("未安装 PyYAML，无法保存 config.yaml，路径: %s", path_str)
         return False
 
     try:
@@ -280,8 +346,11 @@ def save_config(config: AppConfig) -> bool:
                 default_flow_style=False,
                 sort_keys=False,
             )
-        logger.info("配置已保存至 %s", _CONFIG_PATH)
+        _last_save_error = None
+        logger.info("配置已保存至 %s", path_str)
         return True
     except Exception as e:
-        logger.exception("保存 config.yaml 失败: %s", e)
+        err_msg = str(e).strip() or type(e).__name__
+        _last_save_error = err_msg
+        logger.exception("保存 config.yaml 失败，路径: %s，异常: %s", path_str, e)
         return False

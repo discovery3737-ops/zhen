@@ -68,21 +68,38 @@ class ExteriorPage(PageBase):
             if item.widget():
                 item.widget().deleteLater()
 
-        scroll = QScrollArea()
+        g, p = (t.gap if t else 8), (t.pad_page if t else 10)
+
+        # 固定头部：标题 + 关键状态（运行 / E-STOP / 故障）
+        header = QWidget(objectName="pageHeader")
+        header_ly = QVBoxLayout(header)
+        header_ly.setSpacing(g // 2)
+        header_ly.setContentsMargins(p, p, p, g)
+        title = QLabel("外设")
+        title.setObjectName("pageTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_ly.addWidget(title)
+        self._header_status_row = QHBoxLayout()
+        self._header_run_label = QLabel("运行: 空闲", objectName="small")
+        self._header_estop_label = QLabel("E-STOP: 正常", objectName="small")
+        self._header_fault_label = QLabel("故障: --", objectName="small")
+        self._header_status_row.addWidget(self._header_run_label)
+        self._header_status_row.addWidget(self._header_estop_label)
+        self._header_status_row.addWidget(self._header_fault_label)
+        self._header_status_row.addStretch()
+        header_ly.addLayout(self._header_status_row)
+        layout.addWidget(header)
+
+        scroll = QScrollArea(objectName="pageScrollArea")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner = QWidget()
         ly = QVBoxLayout(inner)
-        ly.setSpacing(t.gap if t else 8)
-        ly.setContentsMargins(t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10)
+        ly.setSpacing(g)
+        ly.setContentsMargins(p, g, p, p)
 
-        title = QLabel("外设")
-        title.setObjectName("pageTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ly.addWidget(title)
-
-        # 1) 顶部状态卡片：限位、运行、E-STOP、故障码（紧凑两行）
+        # 1) 状态卡片：限位、运行、E-STOP、故障码（紧凑两行）
         status_card = self._build_status_card()
         ly.addWidget(status_card)
 
@@ -100,7 +117,7 @@ class ExteriorPage(PageBase):
 
         ly.addStretch()
         scroll.setWidget(inner)
-        layout.addWidget(scroll)
+        layout.addWidget(scroll, 1)
 
         if app_state:
             app_state.changed.connect(
@@ -251,18 +268,27 @@ class ExteriorPage(PageBase):
         self._awning_limit_label.setText(_awning_limit_str(ai, ao))
 
         state_name = PDU_STATE_NAMES.get(state, str(state))
-        if leg_running or awning_running:
-            self._run_state_label.setText(state_name + "…")
-        else:
-            self._run_state_label.setText("空闲")
+        run_text = (state_name + "…") if (leg_running or awning_running) else "空闲"
+        self._run_state_label.setText(run_text)
+        if hasattr(self, "_header_run_label"):
+            self._header_run_label.setText(f"运行: {run_text}")
 
         estop = pd.e_stop
-        self._estop_label.setText("已按下" if estop else "正常")
+        estop_text = "已按下" if estop else "正常"
+        self._estop_label.setText(estop_text)
+        if hasattr(self, "_header_estop_label"):
+            self._header_estop_label.setText(f"E-STOP: {estop_text}")
+            self._header_estop_label.setProperty("severity", "crit" if estop else "")
+            self._header_estop_label.style().unpolish(self._header_estop_label)
+            self._header_estop_label.style().polish(self._header_estop_label)
         self._estop_label.setProperty("severity", "crit" if estop else "")
         self._estop_label.style().unpolish(self._estop_label)
         self._estop_label.style().polish(self._estop_label)
         fc = pd.pdu_fault_code
-        self._fault_label.setText(str(fc) if fc is not None else "--")
+        fault_text = str(fc) if fc is not None else "--"
+        self._fault_label.setText(fault_text)
+        if hasattr(self, "_header_fault_label"):
+            self._header_fault_label.setText(f"故障: {fault_text}")
 
         # 支腿：运行时禁用相反方向，Stop 仅运行中可用
         self._leg_extend_btn.setEnabled(not estop_or_fault and state != LEG_RETRACT_STATE)
@@ -335,6 +361,20 @@ class ExteriorPage(PageBase):
     def set_tokens(self, tokens: LayoutTokens) -> None:
         super().set_tokens(tokens)
         self._tokens = tokens
+        layout = self.layout()
+        if layout and layout.count() >= 2:
+            header = layout.itemAt(0).widget()
+            if isinstance(header, QWidget) and header.layout():
+                header.layout().setSpacing(tokens.gap)
+                header.layout().setContentsMargins(
+                    tokens.pad_page, tokens.pad_page, tokens.pad_page, tokens.gap
+                )
+            scroll = layout.itemAt(1).widget()
+            if isinstance(scroll, QScrollArea) and scroll.widget() and scroll.widget().layout():
+                scroll.widget().layout().setSpacing(tokens.gap)
+                scroll.widget().layout().setContentsMargins(
+                    tokens.pad_page, tokens.gap, tokens.pad_page, tokens.pad_page
+                )
         for lp in self.findChildren(LongPressButton):
             lp.set_tokens(tokens)
         if hasattr(self, "_ext_light_btn"):

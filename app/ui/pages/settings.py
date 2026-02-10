@@ -2,6 +2,7 @@
 
 import datetime
 import shutil
+import time
 import zipfile
 from pathlib import Path
 
@@ -17,14 +18,29 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QLineEdit,
     QMessageBox,
+    QSizePolicy,
 )
 from PyQt6.QtCore import Qt, QTimer
 
 from app.ui.pages.base import PageBase
-from app.core.config import get_config, save_config, load_config, AppConfig
+from app.core.config import (
+    get_config,
+    save_config,
+    load_config,
+    AppConfig,
+    get_config_path,
+    get_last_save_error,
+)
 from app.ui.layout_profile import LayoutTokens, get_tokens
 from app.ui.widgets.long_press_button import LongPressButton
 from app.ui.widgets import CompactToggleRow, TwoColumnFormRow
+from app.ui.widgets.pin_pad_dialog import ask_maintenance_pin
+
+try:
+    from app.services.backlight import BacklightService, BacklightError
+    _backlight_service: BacklightService | None = BacklightService()
+except Exception:
+    _backlight_service = None
 
 # 项目根目录（与 config 一致）
 _ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -104,6 +120,9 @@ class SettingsPage(PageBase):
         self._alarm_controller = alarm_controller
         self._config = self._config_getter()
         self._tokens: LayoutTokens | None = get_tokens()
+        self._maintenance_verified = False
+        self._maintenance_session_timer: QTimer | None = None
+        self._section_service: _CollapsibleSection | None = None
         self._setup_ui()
         self._load_from_config()
         self._start_time_timer()
@@ -132,16 +151,13 @@ class SettingsPage(PageBase):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ly.addWidget(title)
 
-        # Display：显示与语言 + 时间与日期（默认展开）
+        # Display：显示与语言 + 屏幕亮度卡片 + 时间与日期（默认展开）
         section_display = _CollapsibleSection("Display", t, self)
         section_display.set_expanded(True)
         display_content = QWidget()
         display_ly = QVBoxLayout(display_content)
         display_ly.setSpacing(g)
         card_a = _make_card("显示与语言", t, self)
-        self._brightness_slider = QSlider(Qt.Orientation.Horizontal)
-        self._brightness_slider.setRange(0, 100)
-        card_a.layout().addWidget(TwoColumnFormRow("亮度", self._brightness_slider, tokens=t))
         self._theme_combo = QComboBox()
         self._theme_combo.addItems(["Light", "Dark"])
         card_a.layout().addWidget(TwoColumnFormRow("主题模式", self._theme_combo, tokens=t))
@@ -154,6 +170,80 @@ class SettingsPage(PageBase):
         self._apply_restart_btn.clicked.connect(self._on_apply_restart)
         card_a.layout().addWidget(self._apply_restart_btn)
         display_ly.addWidget(card_a)
+
+        # 车机风格亮度卡片：大滑条 + 实时预览（松手保存）+ 恢复默认长按
+        self._backlight_available = _backlight_service is not None and _backlight_service.is_available()
+        card_brightness = QFrame(objectName="brightnessCard", parent=self)
+        card_brightness.setProperty("disabled", not self._backlight_available)
+        if t:
+            card_brightness.setStyleSheet("")  # 由 theme.qss 统一
+        ly_bc = QVBoxLayout(card_brightness)
+        ly_bc.setSpacing(g)
+        ly_bc.setContentsMargins(t.pad_card if t else 10, t.pad_card if t else 10, t.pad_card if t else 10, t.pad_card if t else 10)
+        row_title = QHBoxLayout()
+        row_title.addWidget(QLabel("☀", objectName="accent"))  # 简单图标
+        row_title.addWidget(QLabel("屏幕亮度", objectName="cardTitle"))
+        row_title.addStretch()
+        ly_bc.addLayout(row_title)
+        row_slider = QHBoxLayout()
+        self._screen_brightness_slider = QSlider(Qt.Orientation.Horizontal)
+        self._screen_brightness_slider.setObjectName("brightnessSlider")
+        self._screen_brightness_slider.setRange(0, 100)
+        self._screen_brightness_slider.setMinimumHeight(t.btn_h if t else 44)
+        self._screen_brightness_slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._screen_brightness_slider.valueChanged.connect(self._on_screen_brightness_value_changed)
+        self._screen_brightness_slider.sliderReleased.connect(self._on_screen_brightness_released)
+        right_brightness = QWidget()
+        right_ly = QVBoxLayout(right_brightness)
+        right_ly.setContentsMargins(0, 0, 0, 0)
+        right_ly.setSpacing(0)
+        lbl_current = QLabel("当前屏幕亮度", objectName="small")
+        self._screen_brightness_label = QLabel("--")
+        self._screen_brightness_label.setObjectName("brightnessPercent")
+        self._screen_brightness_label.setMinimumWidth(56)
+        self._screen_brightness_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        right_ly.addWidget(lbl_current)
+        right_ly.addWidget(self._screen_brightness_label)
+        row_slider.addWidget(self._screen_brightness_slider, stretch=7)
+        row_slider.addWidget(right_brightness, stretch=0)
+        ly_bc.addLayout(row_slider)
+        self._screen_brightness_hint = QLabel("拖动即时预览，松手保存", objectName="small")
+        self._screen_brightness_hint.setWordWrap(True)
+        ly_bc.addWidget(self._screen_brightness_hint)
+        row_shortcuts = QHBoxLayout()
+        self._btn_night = QPushButton("夜间")
+        self._btn_night.setProperty("compact", "true")
+        self._btn_night.setMinimumHeight(t.btn_h if t else 44)
+        self._btn_night.clicked.connect(lambda: self._set_brightness_preset(15))
+        self._btn_day = QPushButton("日间")
+        self._btn_day.setProperty("primary", "true")
+        self._btn_day.setProperty("compact", "true")
+        self._btn_day.setMinimumHeight(t.btn_h if t else 44)
+        self._btn_day.clicked.connect(lambda: self._set_brightness_preset(70))
+        row_shortcuts.addWidget(self._btn_night)
+        row_shortcuts.addWidget(self._btn_day)
+        ly_bc.addLayout(row_shortcuts)
+        self._screen_brightness_debounce_timer = QTimer(self)
+        self._screen_brightness_debounce_timer.setSingleShot(True)
+        self._screen_brightness_debounce_timer.timeout.connect(self._apply_screen_brightness_preview)
+        self._screen_brightness_last_write_time = 0.0
+        self._screen_brightness_saved_timer = QTimer(self)
+        self._screen_brightness_saved_timer.setSingleShot(True)
+        self._screen_brightness_saved_timer.timeout.connect(self._restore_brightness_hint_text)
+        self._restore_default_brightness_btn = LongPressButton("恢复默认亮度", tokens=t)
+        self._restore_default_brightness_btn.setDanger(True)
+        self._restore_default_brightness_btn.setHoldMs(1500)
+        self._restore_default_brightness_btn.confirmed.connect(self._on_restore_default_brightness)
+        if not self._backlight_available:
+            self._screen_brightness_slider.setEnabled(False)
+            self._screen_brightness_label.setEnabled(False)
+            self._screen_brightness_hint.setText("当前屏幕不支持硬件亮度控制")
+            self._restore_default_brightness_btn.setEnabled(False)
+            self._restore_default_brightness_btn.setToolTip("当前屏幕不支持硬件亮度控制")
+            self._btn_night.setEnabled(False)
+            self._btn_day.setEnabled(False)
+        ly_bc.addWidget(self._restore_default_brightness_btn)
+        display_ly.addWidget(card_brightness)
         card_b = _make_card("时间与日期", t, self)
         self._time_label = QLabel("--:--:--")
         self._time_label.setObjectName("bigNumber")
@@ -213,10 +303,11 @@ class SettingsPage(PageBase):
         section_alarm.set_content(card_d)
         ly.addWidget(section_alarm)
 
-        # Service：维护与调试（默认折叠），危险操作 LongPress + 倒计时
-        section_service = _CollapsibleSection("Service", t, self)
+        # 维护与调试（默认收起）；展开时先验证 PIN，会话期内可操作危险项
+        section_service = _CollapsibleSection("维护与调试", t, self)
         section_service.set_expanded(False)
-        card_e = _make_card("维护与调试", t, self)
+        self._section_service = section_service
+        card_e = _make_card("危险操作", t, self)
         self._dev_mode_row = CompactToggleRow("开发模式", tokens=t)
         card_e.layout().addWidget(self._dev_mode_row)
         self._export_logs_btn = QPushButton("导出日志")
@@ -235,6 +326,11 @@ class SettingsPage(PageBase):
         section_service.set_content(card_e)
         ly.addWidget(section_service)
 
+        # 维护区：点击展开时先验证 PIN，未验证时按钮禁用
+        section_service._header_btn.clicked.disconnect(section_service._toggle)
+        section_service._header_btn.clicked.connect(self._on_service_header_clicked)
+        self._update_maintenance_buttons()
+
         ly.addStretch()
         scroll.setWidget(inner)
         root.addWidget(scroll)
@@ -243,10 +339,127 @@ class SettingsPage(PageBase):
             self._app_state.changed.connect(self._on_comm_changed, Qt.ConnectionType.QueuedConnection)
         QTimer.singleShot(0, self._refresh_comm_status)
 
-    def _load_from_config(self) -> None:
-        """从 config 加载到控件（进入页面时调用）"""
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._backlight_available and _backlight_service is not None:
+            _backlight_service.apply_percent_from_config(self._config_getter())
+
+    def _on_screen_brightness_value_changed(self, value: int) -> None:
+        self._screen_brightness_label.setText(f"{value}%")
+        self._screen_brightness_debounce_timer.stop()
+        self._screen_brightness_debounce_timer.start(80)
+
+    def _apply_screen_brightness_preview(self) -> None:
+        """去抖 + 限速：仅设置硬件背光（实时预览），不写 config。"""
+        if not self._backlight_available or _backlight_service is None:
+            return
+        value = self._screen_brightness_slider.value()
+        now = time.time()
+        if now - self._screen_brightness_last_write_time < 0.08:
+            return
+        self._screen_brightness_last_write_time = now
+        effective = max(5, value) if value > 0 else 5
+        try:
+            _backlight_service.set_percent(effective, min_pct=5)
+        except BacklightError as e:
+            self._screen_brightness_hint.setText(str(e))
+            return
+        except Exception as e:
+            self._screen_brightness_hint.setText(f"设置失败: {e}")
+            return
+        if value == 0:
+            self._screen_brightness_hint.setText("为避免全黑，已限制最低亮度为 5%")
+        elif self._screen_brightness_hint.text() == "为避免全黑，已限制最低亮度为 5%":
+            self._screen_brightness_hint.setText("拖动即时预览，松手保存")
+
+    def _on_screen_brightness_released(self) -> None:
+        """松手：写 config 并保存，成功轻提示「已保存」；失败弹窗显示路径、原因与 chown 提示。"""
+        value = self._screen_brightness_slider.value()
+        pct = max(5, min(100, value))
+        self._config.display.brightness_percent = pct
+        if self._backlight_available and _backlight_service is not None:
+            try:
+                _backlight_service.set_percent(pct, min_pct=5)
+            except (BacklightError, Exception):
+                pass
+        if self._save_config_fn(self._config):
+            self._screen_brightness_hint.setText("已保存")
+            self._screen_brightness_saved_timer.stop()
+            self._screen_brightness_saved_timer.start(2000)
+        else:
+            self._show_save_error_dialog()
+
+    def _restore_brightness_hint_text(self) -> None:
+        if self._backlight_available:
+            self._screen_brightness_hint.setText("拖动即时预览，松手保存")
+        else:
+            self._screen_brightness_hint.setText("当前屏幕不支持硬件亮度控制")
+
+    def _show_save_error_dialog(self) -> None:
+        """保存失败时弹窗：异常摘要 + config.yaml 绝对路径 + 权限修复提示（chown）+ logs。"""
+        path_str = get_config_path()
+        reason = get_last_save_error() or "未知错误"
+        msg = (
+            f"配置保存失败。\n\n原因：{reason}\n\n"
+            f"配置文件路径：\n{path_str}\n\n"
+            "若为权限问题，可在终端执行（将 <用户> 改为当前用户名）：\n"
+            "  sudo chown <用户> <配置文件路径>\n\n"
+            "详细日志请查看：logs/app.log"
+        )
+        QMessageBox.warning(self, "保存失败", msg, QMessageBox.StandardButton.Ok)
+
+    def _set_brightness_preset(self, pct: int) -> None:
+        """一键预设：夜间 15% / 日间 70%，立即生效并保存到 config。"""
+        pct = max(5, min(100, pct))
+        if not self._backlight_available or _backlight_service is None:
+            self._screen_brightness_hint.setText("当前屏幕不支持硬件亮度控制")
+            return
+        try:
+            _backlight_service.set_percent(pct, min_pct=5)
+        except BacklightError as e:
+            self._screen_brightness_hint.setText(str(e))
+            return
+        self._screen_brightness_slider.setValue(pct)
+        self._screen_brightness_label.setText(f"{pct}%")
+        self._config.display.brightness_percent = pct
+        if self._save_config_fn(self._config):
+            self._screen_brightness_hint.setText("已保存")
+            self._screen_brightness_saved_timer.stop()
+            self._screen_brightness_saved_timer.start(2000)
+        else:
+            self._show_save_error_dialog()
+
+    def _on_restore_default_brightness(self) -> None:
+        """长按确认后：设为默认亮度、写硬件、写 config 并保存。"""
         cfg = self._config
-        self._brightness_slider.setValue(getattr(cfg.ui, "brightness", 80))
+        default_pct = getattr(getattr(cfg, "display", None), "default_brightness_percent", 60)
+        default_pct = max(5, min(100, int(default_pct)))
+        if not self._backlight_available or _backlight_service is None:
+            self._screen_brightness_hint.setText("当前屏幕不支持硬件亮度控制")
+            return
+        try:
+            _backlight_service.set_percent(default_pct, min_pct=5)
+        except BacklightError as e:
+            self._screen_brightness_hint.setText(str(e))
+            return
+        self._screen_brightness_slider.setValue(default_pct)
+        self._screen_brightness_label.setText(f"{default_pct}%")
+        cfg.display.brightness_percent = default_pct
+        if self._save_config_fn(cfg):
+            self._screen_brightness_hint.setText(f"已恢复默认亮度：{default_pct}%")
+            self._screen_brightness_saved_timer.stop()
+            self._screen_brightness_saved_timer.start(2500)
+        else:
+            self._show_save_error_dialog()
+
+    def _load_from_config(self) -> None:
+        """从 config 加载到控件（进入页面时调用）；进入设置页时应用一次保存的亮度（防抖在 backlight 内）。"""
+        cfg = self._config
+        bp = max(0, min(100, getattr(cfg.display, "brightness_percent", 60)))
+        self._screen_brightness_slider.setValue(bp)
+        self._screen_brightness_label.setText(f"{bp}%")
+        if self._backlight_available and _backlight_service is not None:
+            _backlight_service.apply_percent_from_config(cfg)
         theme = getattr(cfg.ui, "theme_mode", "light")
         self._theme_combo.setCurrentText(theme.capitalize() if theme else "Light")
         self._language_combo.setCurrentText(cfg.ui.language)
@@ -265,7 +478,7 @@ class SettingsPage(PageBase):
     def _apply_to_config(self) -> None:
         """从控件写回 config（保存时调用，不落盘）"""
         cfg = self._config
-        cfg.ui.brightness = self._brightness_slider.value()
+        cfg.display.brightness_percent = max(0, min(100, self._screen_brightness_slider.value()))
         cfg.ui.theme_mode = self._theme_combo.currentText().lower()
         cfg.ui.language = self._language_combo.currentText()
         cfg.system.timezone = self._timezone_combo.currentText()
@@ -328,6 +541,64 @@ class SettingsPage(PageBase):
     def _on_comm_changed(self, _) -> None:
         self._refresh_comm_status()
 
+    def _on_service_header_clicked(self) -> None:
+        """维护与调试：展开前先验证 PIN，通过后进入维护会话。"""
+        sec = self._section_service
+        if not sec:
+            return
+        if sec._expanded:
+            sec.set_expanded(False)
+            return
+        cfg = self._config_getter()
+        pin = getattr(cfg.security, "maintenance_pin", "1234") or "1234"
+        if not ask_maintenance_pin(pin, tokens=self._tokens, parent=self):
+            return
+        self._maintenance_verified = True
+        sec.set_expanded(True)
+        self._start_maintenance_session()
+        self._update_maintenance_buttons()
+
+    def _start_maintenance_session(self) -> None:
+        """启动维护会话计时，到期自动退出并提示。"""
+        if self._maintenance_session_timer:
+            self._maintenance_session_timer.stop()
+            self._maintenance_session_timer = None
+        cfg = self._config_getter()
+        timeout_s = getattr(getattr(cfg, "security", None), "session_timeout_s", 900) or 900
+        self._maintenance_session_timer = QTimer(self)
+        self._maintenance_session_timer.setSingleShot(True)
+
+        def _on_timeout() -> None:
+            self._maintenance_verified = False
+            self._maintenance_session_timer = None
+            self._update_maintenance_buttons()
+            if self._section_service and self._section_service._expanded:
+                self._section_service.set_expanded(False)
+            QMessageBox.information(
+                self,
+                "维护会话已过期",
+                "维护会话已到期，请重新输入 PIN 后继续操作。",
+                QMessageBox.StandardButton.Ok,
+            )
+
+        self._maintenance_session_timer.timeout.connect(_on_timeout)
+        self._maintenance_session_timer.start(timeout_s * 1000)
+
+    def _update_maintenance_buttons(self) -> None:
+        """根据维护验证状态启用/禁用危险操作按钮并设置提示。"""
+        enabled = self._maintenance_verified
+        hint = "需要维护 PIN" if not enabled else ""
+        for btn in (
+            getattr(self, "_reconnect_btn", None),
+            getattr(self, "_save_thresholds_btn", None),
+            getattr(self, "_export_logs_btn", None),
+            getattr(self, "_export_config_btn", None),
+            getattr(self, "_reset_btn", None),
+        ):
+            if btn is not None:
+                btn.setEnabled(enabled)
+                btn.setToolTip(hint)
+
     def _on_apply_restart(self) -> None:
         r = QMessageBox.question(
             self,
@@ -342,12 +613,14 @@ class SettingsPage(PageBase):
         if self._save_config_fn(self._config):
             QMessageBox.information(self, "保存成功", "配置已保存。请手动重启应用使部分设置生效。")
         else:
-            QMessageBox.warning(self, "保存失败", "无法写入 config.yaml，请检查权限。")
+            self._show_save_error_dialog()
 
     def _on_ntp_sync(self) -> None:
         QMessageBox.information(self, "同步时间", "已触发同步请求（TODO）")
 
     def _on_reconnect(self) -> None:
+        if not self._maintenance_verified:
+            return
         self._apply_to_config()
         self._config.modbus.use_mock = False
         if self._save_config_fn(self._config):
@@ -361,16 +634,20 @@ class SettingsPage(PageBase):
             except Exception as e:
                 QMessageBox.warning(self, "重新连接", f"配置已保存，但重启连接失败：{e}")
         else:
-            QMessageBox.warning(self, "保存失败", "无法写入 config.yaml")
+            self._show_save_error_dialog()
 
     def _on_save_thresholds(self) -> None:
+        if not self._maintenance_verified:
+            return
         self._apply_to_config()
         if self._save_config_fn(self._config):
             QMessageBox.information(self, "保存成功", "告警阈值已保存，AlarmEngine 将读取最新阈值生效。")
         else:
-            QMessageBox.warning(self, "保存失败", "无法写入 config.yaml")
+            self._show_save_error_dialog()
 
     def _on_export_logs(self) -> None:
+        if not self._maintenance_verified:
+            return
         if not _LOGS_DIR.exists():
             QMessageBox.information(self, "导出日志", "暂无日志")
             return
@@ -390,6 +667,8 @@ class SettingsPage(PageBase):
             QMessageBox.warning(self, "导出失败", f"无法导出日志：{e}")
 
     def _on_export_config(self) -> None:
+        if not self._maintenance_verified:
+            return
         _EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         dest = _EXPORTS_DIR / f"config_{ts}.yaml"
@@ -403,6 +682,8 @@ class SettingsPage(PageBase):
             QMessageBox.warning(self, "导出失败", f"无法导出配置：{e}")
 
     def _on_reset_defaults(self) -> None:
+        if not self._maintenance_verified:
+            return
         r = QMessageBox.question(
             self,
             "恢复默认设置",
@@ -426,6 +707,6 @@ class SettingsPage(PageBase):
                 self._load_from_config()
                 QMessageBox.information(self, "恢复默认", f"已备份至 {backup}\n默认设置已应用，请手动重启应用。")
             else:
-                QMessageBox.warning(self, "失败", "无法写入 config.yaml")
+                self._show_save_error_dialog()
         except Exception as e:
             QMessageBox.warning(self, "失败", f"恢复默认失败：{e}")

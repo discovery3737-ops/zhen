@@ -102,6 +102,21 @@ class MainWindow(QMainWindow):
             esc_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
             esc_shortcut.activated.connect(self._on_escape_fullscreen)
 
+        QTimer.singleShot(1000, self._apply_backlight_from_config)
+
+    def _apply_backlight_from_config(self) -> None:
+        """启动后约 1s 应用 config 中的硬件背光亮度。"""
+        try:
+            from app.services.backlight import BacklightService
+            svc = BacklightService()
+            if not svc.is_available():
+                return
+            cfg = get_config()
+            pct = max(5, min(100, getattr(cfg.display, "brightness_percent", 60)))
+            svc.set_percent(pct, min_pct=5)
+        except Exception as e:
+            logger.debug("启动时应用背光亮度失败: %s", e)
+
     def _resolve_layout_tokens(self) -> LayoutTokens:
         """从 config 获取目标分辨率并选用对应 profile。ui.force_resolution 优先，否则用 display。"""
         cfg = get_config()
@@ -201,12 +216,17 @@ class MainWindow(QMainWindow):
         ly.setContentsMargins(t.gap, top_m, t.gap, bot_m)
         ly.setSpacing(t.gap)
 
+        # WVGA 图标 24~26px，WXGA 28~32px，保证不挤不裁切
+        is_wvga = t.profile == "WVGA"
+        icon_sz = 25 if is_wvga else 30
         style = self.style()
-        icon_sz = min(32, t.icon_btn_h - 24)
         for label, _key, idx, sp in TAB_ITEMS:
             btn = QToolButton(objectName="tabButton")
             btn.setText(label)
             btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            btn.setAutoRaise(True)
+            btn.setProperty("tab", True)
+            btn.setProperty("compact", is_wvga)
             btn.setIcon(style.standardIcon(sp))
             btn.setIconSize(QSize(icon_sz, icon_sz))
             btn.setMinimumHeight(t.icon_btn_h)
@@ -215,7 +235,7 @@ class MainWindow(QMainWindow):
             btn.setCheckable(True)
             btn.setProperty("tab_index", idx)
             btn.clicked.connect(lambda checked, i=idx: self._on_tab_click(i))
-            ly.addWidget(btn, 1)  # stretch=1，5 个 Tab 等宽铺满
+            ly.addWidget(btn, 1)
             self._tab_buttons.append(btn)
 
         return tab_bar

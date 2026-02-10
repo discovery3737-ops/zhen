@@ -14,12 +14,16 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QScrollArea,
     QSizePolicy,
+    QDialog,
+    QDialogButtonBox,
+    QTextEdit,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from app.ui.pages.base import PageBase
 from app.ui.layout_profile import LayoutTokens, get_tokens
 from app.core.config import get_config
+from app.services.video_manager import get_diagnostics as get_video_diagnostics
 
 if TYPE_CHECKING:
     from app.services.video_manager import VideoManager
@@ -28,6 +32,38 @@ logger = logging.getLogger(__name__)
 
 # WVGA 下源按钮高度上限，避免挤压视频区
 _SOURCE_BAR_HEIGHT_CAP = 64
+
+
+def _format_diagnostics_text(diag: dict) -> str:
+    """将 get_diagnostics() 转为可读多行文本。"""
+    lines = [
+        f"会话类型 (XDG_SESSION_TYPE): {diag.get('session_type', '--')}",
+        f"gi (PyGObject) 可用: {diag.get('gi_available', False)}",
+        f"GStreamer 可用: {diag.get('gst_available', False)}",
+        f"Overlay 嵌入支持: {diag.get('overlay_supported', False)}",
+        f"当前 Sink: {diag.get('selected_sink', '--')}",
+        f"Backend 偏好: {diag.get('backend', '--')}",
+        f"最近错误: {diag.get('last_error') or '--'}",
+    ]
+    return "\n".join(lines)
+
+
+class VideoDiagnosticsDialog(QDialog):
+    """视频依赖自检弹窗：展示 get_diagnostics() 关键项。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("视频依赖自检")
+        ly = QVBoxLayout(self)
+        self._text = QTextEdit()
+        self._text.setReadOnly(True)
+        self._text.setMinimumSize(360, 220)
+        ly.addWidget(self._text)
+        btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btn.accepted.connect(self.accept)
+        ly.addWidget(btn)
+        diag = get_video_diagnostics()
+        self._text.setPlainText(_format_diagnostics_text(diag))
 
 
 class VideoWidget(QFrame):
@@ -80,8 +116,16 @@ class SingleViewWidget(QWidget):
         ly = QVBoxLayout(self)
         ly.setContentsMargins(0, 0, 0, 0)
 
+        # 视频区：可切换为占位提示（嵌入失败时显示）
+        self._video_stack = QStackedWidget()
         self._video_widget = VideoWidget(self)
-        ly.addWidget(self._video_widget, 1)
+        self._video_stack.addWidget(self._video_widget)
+        self._embed_placeholder = QLabel("", objectName="cameraEmbedPlaceholder")
+        self._embed_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._embed_placeholder.setWordWrap(True)
+        self._video_stack.addWidget(self._embed_placeholder)
+        self._video_stack.setCurrentIndex(0)
+        ly.addWidget(self._video_stack, 1)
 
         # 状态一行（高度 token 化）
         self._status_label = QLabel("未选择", objectName="cameraStatusLabel")
@@ -168,6 +212,13 @@ class SingleViewWidget(QWidget):
 
     def _on_placeholder(self, msg: str) -> None:
         self.status_changed.emit("failed")
+        diag = get_video_diagnostics()
+        main_msg = "视频嵌入失败"
+        if diag.get("session_type") == "wayland" and not diag.get("overlay_supported"):
+            main_msg = main_msg + "。建议切换到 X11。Wayland 下窗口嵌入可能不可用。"
+        detail = (msg or "").strip()
+        self._embed_placeholder.setText(f"{main_msg}\n\n{detail}" if detail else main_msg)
+        self._video_stack.setCurrentIndex(1)
         self._update_status_label("失败", msg)
 
     def _on_status(self, status: str) -> None:
@@ -186,8 +237,22 @@ class SingleViewWidget(QWidget):
         self._current_source = source_id
         for sid, btn in self._source_buttons.items():
             btn.setChecked(sid == source_id)
-        self._video_manager.switch(url)
         self._update_status_label("连接中...")
+        win_id_val = self._video_widget.winId()
+        win_id = int(win_id_val) if win_id_val else 0
+        ok = self._video_manager.start_embedded(url, win_id)
+        if ok:
+            self._video_stack.setCurrentIndex(0)
+            self._update_status_label("播放中")
+        else:
+            main_msg = "当前会话不支持嵌入视频，建议切换到 X11"
+            detail = (self._video_manager.last_error or "").strip()
+            diag = get_video_diagnostics()
+            if diag.get("session_type") == "wayland" and not diag.get("overlay_supported"):
+                main_msg = main_msg + " Wayland 下窗口嵌入可能不可用。"
+            self._embed_placeholder.setText(f"{main_msg}\n\n{detail}" if detail else main_msg)
+            self._video_stack.setCurrentIndex(1)
+            self._update_status_label("嵌入失败")
 
     def start_playback(self, source_id: str | None = None) -> None:
         if not self._urls:
@@ -203,12 +268,24 @@ class SingleViewWidget(QWidget):
             btn.setChecked(k == sid)
         win_id_val = self._video_widget.winId()
         win_id = int(win_id_val) if win_id_val else 0
-        logger.debug("[Camera] start_playback source=%s url=%s winId=%s", sid, url[:60] if url else "", win_id)
-        if win_id:
-            self._video_manager.start(url, win_id)
-        else:
-            self._video_manager.start(url, None)
+        logger.debug("[Camera] start_playback source=%s winId=%s", sid, win_id)
         self._update_status_label("连接中...")
+        ok = self._video_manager.start_embedded(url, win_id)
+        if ok:
+            self._video_stack.setCurrentIndex(0)
+            self._update_status_label("播放中")
+        else:
+            main_msg = "当前会话不支持嵌入视频，建议切换到 X11"
+            detail = (self._video_manager.last_error or "").strip()
+            diag = get_video_diagnostics()
+            if diag.get("session_type") == "wayland" and not diag.get("overlay_supported"):
+                main_msg = main_msg + " Wayland 下窗口嵌入可能不可用。"
+            if detail:
+                self._embed_placeholder.setText(f"{main_msg}\n\n{detail}")
+            else:
+                self._embed_placeholder.setText(main_msg)
+            self._video_stack.setCurrentIndex(1)
+            self._update_status_label("嵌入失败")
 
     def stop_playback(self) -> None:
         self._video_manager.stop()
@@ -243,7 +320,7 @@ class CameraPage(PageBase):
         root.setContentsMargins(p, p, p, p)
         logger.debug("[Camera] CameraPage 布局已初始化")
 
-        # 模式按钮：鸟瞰 / 分屏 / 单路，等宽、高度 t.btn_h
+        # 模式按钮 + 依赖自检
         mode_row = QHBoxLayout()
         mode_row.setSpacing(g)
         self._mode_group = QButtonGroup(self)
@@ -258,6 +335,10 @@ class CameraPage(PageBase):
             btn.clicked.connect(lambda checked, m=mode_id: self._on_mode_click(m))
             mode_row.addWidget(btn, 1)
             self._mode_group.addButton(btn)
+        self._diag_btn = QPushButton("依赖自检", objectName="cameraModeBtn")
+        self._diag_btn.setMinimumHeight(bh)
+        self._diag_btn.clicked.connect(self._on_show_diagnostics)
+        mode_row.addWidget(self._diag_btn)
         root.addLayout(mode_row)
 
         self._stack = QStackedWidget()
@@ -290,6 +371,10 @@ class CameraPage(PageBase):
             btn.setMinimumHeight(bh)
         if self._single_view:
             self._single_view.set_tokens(tokens)
+
+    def _on_show_diagnostics(self) -> None:
+        dlg = VideoDiagnosticsDialog(self)
+        dlg.exec()
 
     def _on_mode_click(self, mode_id: str) -> None:
         idx = {"bird": 0, "split": 1, "single": 2}.get(mode_id, 2)

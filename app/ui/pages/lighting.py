@@ -39,19 +39,27 @@ class LightingPage(PageBase):
             if item.widget():
                 item.widget().deleteLater()
 
-        scroll = QScrollArea()
+        g, p = (t.gap if t else 8), (t.pad_page if t else 10)
+
+        # 固定头部：标题
+        header = QWidget(objectName="pageHeader")
+        header_ly = QVBoxLayout(header)
+        header_ly.setSpacing(g // 2)
+        header_ly.setContentsMargins(p, p, p, g)
+        title = QLabel("灯光")
+        title.setObjectName("pageTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_ly.addWidget(title)
+        layout.addWidget(header)
+
+        scroll = QScrollArea(objectName="pageScrollArea")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner = QWidget()
         ly = QVBoxLayout(inner)
-        ly.setSpacing(t.gap if t else 8)
-        ly.setContentsMargins(t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10)
-
-        title = QLabel("灯光")
-        title.setObjectName("pageTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ly.addWidget(title)
+        ly.setSpacing(g)
+        ly.setContentsMargins(p, g, p, p)
 
         card = QFrame(objectName="card")
         card_ly = QVBoxLayout(card)
@@ -105,7 +113,7 @@ class LightingPage(PageBase):
         ly.addWidget(card)
         ly.addStretch()
         scroll.setWidget(inner)
-        layout.addWidget(scroll)
+        layout.addWidget(scroll, 1)
 
         if app_state:
             app_state.changed.connect(
@@ -194,6 +202,20 @@ class LightingPage(PageBase):
     def set_tokens(self, tokens: LayoutTokens) -> None:
         super().set_tokens(tokens)
         self._tokens = tokens
+        layout = self.layout()
+        if layout and layout.count() >= 2:
+            header = layout.itemAt(0).widget()
+            if isinstance(header, QWidget) and header.layout():
+                header.layout().setSpacing(tokens.gap)
+                header.layout().setContentsMargins(
+                    tokens.pad_page, tokens.pad_page, tokens.pad_page, tokens.gap
+                )
+            scroll = layout.itemAt(1).widget()
+            if isinstance(scroll, QScrollArea) and scroll.widget() and scroll.widget().layout():
+                scroll.widget().layout().setSpacing(tokens.gap)
+                scroll.widget().layout().setContentsMargins(
+                    tokens.pad_page, tokens.gap, tokens.pad_page, tokens.pad_page
+                )
         for row in (self._main_row, self._night_row, self._reading_row, self._strip_row):
             row.set_tokens(tokens)
 

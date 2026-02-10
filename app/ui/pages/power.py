@@ -68,19 +68,31 @@ class PowerPage(PageBase):
                 item.widget().deleteLater()
 
         t = self._tokens
-        scroll = QScrollArea()
+        g, p = t.gap, t.pad_page
+
+        # 固定头部：标题 + 关键状态（SOC）
+        header = QWidget(objectName="pageHeader")
+        header_ly = QVBoxLayout(header)
+        header_ly.setSpacing(g // 2)
+        header_ly.setContentsMargins(p, p, p, g)
+        title = QLabel("动力")
+        title.setObjectName("pageTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_ly.addWidget(title)
+        self._header_soc_label = QLabel("电池 --.- %")
+        self._header_soc_label.setObjectName("small")
+        self._header_soc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_ly.addWidget(self._header_soc_label)
+        layout.addWidget(header)
+
+        scroll = QScrollArea(objectName="pageScrollArea")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner = QWidget()
         ly = QVBoxLayout(inner)
-        ly.setSpacing(t.gap)
-        ly.setContentsMargins(t.pad_page, t.pad_page, t.pad_page, t.pad_page)
-
-        title = QLabel("动力")
-        title.setObjectName("pageTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ly.addWidget(title)
+        ly.setSpacing(g)
+        ly.setContentsMargins(p, g, p, p)
 
         card1 = self._build_battery_card()
         ly.addWidget(card1)
@@ -95,7 +107,7 @@ class PowerPage(PageBase):
 
         ly.addStretch()
         scroll.setWidget(inner)
-        layout.addWidget(scroll)
+        layout.addWidget(scroll, 1)
 
         if app_state:
             app_state.changed.connect(
@@ -109,13 +121,16 @@ class PowerPage(PageBase):
         layout = self.layout()
         if layout is None or not t:
             return
-        if layout.count() > 0:
-            w = layout.itemAt(0).widget()
-            if isinstance(w, QScrollArea) and w.widget():
-                inner_ly = w.widget().layout()
-                if inner_ly:
-                    inner_ly.setSpacing(t.gap)
-                    inner_ly.setContentsMargins(t.pad_page, t.pad_page, t.pad_page, t.pad_page)
+        if layout.count() >= 2:
+            header = layout.itemAt(0).widget()
+            if isinstance(header, QWidget) and header.layout():
+                header.layout().setSpacing(t.gap)
+                header.layout().setContentsMargins(t.pad_page, t.pad_page, t.pad_page, t.gap)
+            scroll = layout.itemAt(1).widget()
+            if isinstance(scroll, QScrollArea) and scroll.widget() and scroll.widget().layout():
+                inner_ly = scroll.widget().layout()
+                inner_ly.setSpacing(t.gap)
+                inner_ly.setContentsMargins(t.pad_page, t.gap, t.pad_page, t.pad_page)
         for w in self.findChildren(LongPressButton):
             w.setMinimumHeight(t.btn_h_key)
         for w in self.findChildren(QPushButton):
@@ -293,6 +308,8 @@ class PowerPage(PageBase):
         soc_x10 = p.soc_x10 if p.soc_x10 is not None else 999
 
         self._soc_label.setText(f"{_soc_str(p.soc_x10)} %")
+        if hasattr(self, "_header_soc_label"):
+            self._header_soc_label.setText(f"电池 {_soc_str(p.soc_x10)} %")
         self._batt_v_label.setText(f"{_voltage_str(p.batt_v_x100)} V")
         self._batt_i_label.setText(f"{_voltage_str(p.batt_i_x100)} A")
         self._batt_p_label.setText(f"{_power_str(p.batt_p_w)} W")

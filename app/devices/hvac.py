@@ -1,8 +1,15 @@
 """Slave01: HVAC + 舱温（CABIN_TEMP 来自本从站时）"""
 
+import logging
 from typing import Any
 
 from app.devices.spec_utils import build_name_map, get_bool, get_val
+
+logger = logging.getLogger(__name__)
+
+# 设备层合法范围（超出时 clamp 并写 debug 日志）
+MODE_MIN, MODE_MAX = 0, 3   # 0=Off, 1=Cool, 2=Vent, 3=Auto
+TARGET_TEMP_X10_MIN, TARGET_TEMP_X10_MAX = 160, 300  # 16.0~30.0 °C
 
 # Slave01 HVAC 写入控制器：高层方法，内部走 modbus_master 写队列
 _hvac_controller: "HvacWriteController | None" = None
@@ -55,12 +62,18 @@ class HvacWriteController:
                 self._mm.write_holding(self._SLAVE, addr, value)
 
     def set_mode(self, mode: int) -> None:
-        """MODE: 0=Off, 1=Cool, 2=Vent, 3=Auto"""
-        self._holding("MODE", mode)
+        """MODE: 0=Off, 1=Cool, 2=Vent, 3=Auto；超出范围时钳制到 [0,3] 后写入。"""
+        clamped = max(MODE_MIN, min(MODE_MAX, mode))
+        if clamped != mode:
+            logger.debug("HVAC set_mode clamped %s -> %s", mode, clamped)
+        self._holding("MODE", clamped)
 
     def set_target_temp_x10(self, value: int) -> None:
-        """目标温度 ×10 ℃"""
-        self._holding("TARGET_TEMP_x10", value)
+        """目标温度 ×10 ℃；超出 [160,300]（16~30℃）时钳制后写入。"""
+        clamped = max(TARGET_TEMP_X10_MIN, min(TARGET_TEMP_X10_MAX, value))
+        if clamped != value:
+            logger.debug("HVAC set_target_temp_x10 clamped %s -> %s", value, clamped)
+        self._holding("TARGET_TEMP_x10", clamped)
 
     def set_evap_fan_level(self, level: int) -> None:
         """蒸发风机档位 0~3"""

@@ -1,62 +1,60 @@
-/* 车载 HMI 主题 - Token 模板，由 MainWindow._load_theme() 替换 {{*}} 后生效；浅底+清晰分区+强对比，无阴影 */
+/* 车载 HMI 主题 - Token 模板，MainWindow._load_theme() 替换 {{*}} 后生效；强光可读、触控反馈明确 */
 
-/* === 全局 === */
+/* === 全局字体层级（车机强光可读） === */
 QWidget {
     font-size: {{FONT_BASE}}px;
     font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
     background-color: #E8EAED;
-    color: #2C3E50;
+    color: #1F2937;
 }
 
 QMainWindow {
     background-color: #E8EAED;
 }
 
-/* === 卡片 === */
-QFrame#card, .card {
-    background-color: #FFFFFF;
-    border-radius: 10px;
-    border: 1px solid #D1D5DB;
-}
-
-/* === 标题/大数字/小字/中号 === */
-QLabel#pageTitle, QLabel[property="title"] {
+/* 标题：FONT_TITLE，600 weight */
+QLabel#pageTitle, QLabel[property="title"], QLabel#cardTitle {
     font-size: {{FONT_TITLE}}px;
-    font-weight: bold;
+    font-weight: 600;
+    color: #1F2937;
 }
 
 QLabel#midNumber {
     font-size: {{FONT_TITLE}}px;
-    font-weight: bold;
+    font-weight: 600;
+    color: #1F2937;
 }
 
+/* 大数字：Value/SOC/温度 */
 QLabel#bigNumber, .big-number, QLabel[property="value"] {
     font-size: {{FONT_BIG}}px;
-    font-weight: bold;
+    font-weight: 600;
     color: #1E3A8A;
 }
 
-QLabel#small, .small-text {
+/* 小字：单位/提示 */
+QLabel#small, .small-text, QLabel#compactToggleSubtitle, QLabel#twoColumnFormLabel {
     font-size: {{FONT_SMALL}}px;
-    color: #6B7280;
+    color: #4B5563;
 }
 
 QLabel#accent {
     color: #2563EB;
+    font-size: {{FONT_BASE}}px;
 }
 
-/* === severity 状态颜色（dynamic property） === */
+/* === severity 状态颜色（提示条/胶囊/文本） === */
 QLabel[severity="ok"] {
     color: #16A34A;
 }
 
 QLabel[severity="warn"] {
-    color: #EAB308;
+    color: #CA8A04;
 }
 
 QLabel[severity="crit"] {
     color: #B91C1C;
-    font-weight: bold;
+    font-weight: 600;
 }
 
 /* === 胶囊状态标签 === */
@@ -80,14 +78,21 @@ QLabel#statusPill[severity="warn"] {
 QLabel#statusPill[severity="crit"] {
     background-color: #FEE2E2;
     color: #B91C1C;
-    font-weight: bold;
+    font-weight: 600;
 }
 
-/* === QPushButton === */
+/* === 卡片 === */
+QFrame#card, .card {
+    background-color: #FFFFFF;
+    border-radius: 10px;
+    border: 1px solid #D1D5DB;
+}
+
+/* === QPushButton：触控 min-height，按下/禁用/焦点反馈 === */
 QPushButton {
     background-color: #F3F4F6;
-    color: #2C3E50;
-    border: 1px solid #D1D5DB;
+    color: #1F2937;
+    border: 2px solid #D1D5DB;
     border-radius: 8px;
     padding: {{GAP}}px {{PAD_CARD}}px;
     font-size: {{FONT_BASE}}px;
@@ -101,24 +106,49 @@ QPushButton:hover {
 
 QPushButton:pressed {
     background-color: #D1D5DB;
+    border-color: #6B7280;
 }
 
-QPushButton:checked, QPushButton[property="primary"] {
+QPushButton:focus {
+    border: 2px solid #2563EB;
+    outline: none;
+}
+
+QPushButton:disabled {
+    background-color: #E5E7EB;
+    color: #6B7280;
+    border-color: #D1D5DB;
+}
+
+/* 主操作 [primary=true] */
+QPushButton:checked, QPushButton[property="primary"], QPushButton[primary="true"] {
     background-color: #2563EB;
     color: #FFFFFF;
     border-color: #2563EB;
 }
 
-QPushButton:checked:hover, QPushButton[property="primary"]:hover {
+QPushButton:checked:hover, QPushButton[property="primary"]:hover, QPushButton[primary="true"]:hover {
     background-color: #1D4ED8;
     border-color: #1D4ED8;
 }
 
+QPushButton:checked:pressed, QPushButton[property="primary"]:pressed, QPushButton[primary="true"]:pressed {
+    background-color: #1E40AF;
+    border-color: #1E3A8A;
+}
+
+QPushButton:checked:disabled, QPushButton[property="primary"]:disabled, QPushButton[primary="true"]:disabled {
+    background-color: #93C5FD;
+    color: #EFF6FF;
+    border-color: #93C5FD;
+}
+
+/* 危险 [danger="true"] */
 QPushButton[danger="true"], QPushButton[property="danger"] {
     background-color: #FEE2E2;
     color: #B91C1C;
     border: 2px solid #DC2626;
-    font-weight: bold;
+    font-weight: 600;
 }
 
 QPushButton[danger="true"]:hover, QPushButton[property="danger"]:hover {
@@ -128,16 +158,29 @@ QPushButton[danger="true"]:hover, QPushButton[property="danger"]:hover {
 
 QPushButton[danger="true"]:pressed, QPushButton[property="danger"]:pressed {
     background-color: #FCA5A5;
+    border-color: #991B1B;
+}
+
+QPushButton[danger="true"]:disabled, QPushButton[property="danger"]:disabled {
+    background-color: #FECACA;
+    color: #B91C1C;
+    border-color: #FCA5A5;
+    opacity: 0.9;
 }
 
 QPushButton#warn, QPushButton[property="warn"] {
     background-color: #FEF3C7;
     color: #92400E;
-    border-color: #F59E0B;
+    border: 2px solid #F59E0B;
 }
 
 QPushButton#warn:hover, QPushButton[property="warn"]:hover {
     background-color: #FDE68A;
+}
+
+QPushButton#warn:pressed, QPushButton[property="warn"]:pressed {
+    background-color: #FCD34D;
+    border-color: #D97706;
 }
 
 QPushButton#primary, QPushButton#shortcutBtn {
@@ -158,8 +201,8 @@ QPushButton#moreMenuItem {
 /* === QToolButton === */
 QToolButton {
     background-color: #F3F4F6;
-    color: #2C3E50;
-    border: 1px solid #D1D5DB;
+    color: #1F2937;
+    border: 2px solid #D1D5DB;
     border-radius: 8px;
     padding: {{GAP}}px;
     font-size: {{FONT_BASE}}px;
@@ -169,10 +212,23 @@ QToolButton {
 
 QToolButton:hover {
     background-color: #E5E7EB;
+    border-color: #9CA3AF;
 }
 
 QToolButton:pressed {
     background-color: #D1D5DB;
+    border-color: #6B7280;
+}
+
+QToolButton:focus {
+    border: 2px solid #2563EB;
+    outline: none;
+}
+
+QToolButton:disabled {
+    background-color: #E5E7EB;
+    color: #6B7280;
+    border-color: #D1D5DB;
 }
 
 QToolButton:checked {
@@ -183,37 +239,66 @@ QToolButton:checked {
 
 QToolButton:checked:hover {
     background-color: #1D4ED8;
+    border-color: #1D4ED8;
 }
 
-/* === 底部 TabBar === */
+QToolButton:checked:pressed {
+    background-color: #1E40AF;
+    border-color: #1E3A8A;
+}
+
+/* === 底部 TabBar（车机风格） === */
 QWidget#tabBar {
     background-color: #D1D5DB;
     border-top: 1px solid #9CA3AF;
 }
 
 QPushButton#tabButton,
-QToolButton#tabButton {
+QToolButton#tabButton,
+QToolButton[tab="true"] {
     min-height: {{ICON_BTN_H}}px;
     min-width: {{ICON_BTN_H}}px;
-    border-radius: 8px;
+    border-radius: 6px;
     font-size: {{FONT_SMALL}}px;
     text-align: center;
     background-color: transparent;
     border: 2px solid transparent;
+    padding: 6px 4px;
 }
 
-QToolButton#tabButton:hover, QPushButton#tabButton:hover {
+QToolButton#tabButton[compact="true"],
+QToolButton[tab="true"][compact="true"] {
+    padding: 4px 2px;
+}
+
+QToolButton#tabButton:hover, QPushButton#tabButton:hover,
+QToolButton[tab="true"]:hover {
     background-color: rgba(0,0,0,0.06);
 }
 
-QToolButton#tabButton:checked, QPushButton#tabButton:checked {
-    background-color: #2563EB;
-    color: #FFFFFF;
-    border-color: #1D4ED8;
+QToolButton#tabButton:pressed, QPushButton#tabButton:pressed,
+QToolButton[tab="true"]:pressed {
+    background-color: rgba(0,0,0,0.12);
 }
 
-QToolButton#tabButton:checked:hover, QPushButton#tabButton:checked:hover {
+QToolButton#tabButton:checked, QPushButton#tabButton:checked,
+QToolButton[tab="true"]:checked {
+    background-color: #2563EB;
+    color: #FFFFFF;
+    border-color: transparent;
+    border-bottom: 3px solid #1D4ED8;
+}
+
+QToolButton#tabButton:checked:hover, QPushButton#tabButton:checked:hover,
+QToolButton[tab="true"]:checked:hover {
     background-color: #1D4ED8;
+    border-bottom: 3px solid #1D4ED8;
+}
+
+QToolButton#tabButton:checked:pressed, QPushButton#tabButton:checked:pressed,
+QToolButton[tab="true"]:checked:pressed {
+    background-color: #1E40AF;
+    border-bottom: 3px solid #1E40AF;
 }
 
 /* === More 底部弹层 === */
@@ -229,19 +314,38 @@ QFrame#bottomSheet {
     border-bottom: none;
 }
 
-/* === QCheckBox === */
+/* === QCheckBox：min-height、按下/禁用/焦点 === */
 QCheckBox {
     font-size: {{FONT_BASE}}px;
     min-height: {{BTN_H}}px;
     spacing: {{GAP}}px;
+    color: #1F2937;
+}
+
+QCheckBox:disabled {
+    color: #6B7280;
+}
+
+QCheckBox:focus {
+    outline: none;
 }
 
 QCheckBox::indicator {
     width: 48px;
     height: 28px;
     border-radius: 14px;
+    background-color: #E5E7EB;
+    border: 2px solid #9CA3AF;
+}
+
+QCheckBox::indicator:hover {
     background-color: #D1D5DB;
-    border: 1px solid #9CA3AF;
+    border-color: #6B7280;
+}
+
+QCheckBox::indicator:pressed {
+    background-color: #9CA3AF;
+    border-color: #4B5563;
 }
 
 QCheckBox::indicator:checked {
@@ -249,15 +353,27 @@ QCheckBox::indicator:checked {
     border-color: #2563EB;
 }
 
-QCheckBox::indicator:hover {
-    background-color: #E5E7EB;
-}
-
 QCheckBox::indicator:checked:hover {
     background-color: #1D4ED8;
+    border-color: #1D4ED8;
 }
 
-/* === QSlider === */
+QCheckBox::indicator:checked:pressed {
+    background-color: #1E40AF;
+    border-color: #1E3A8A;
+}
+
+QCheckBox::indicator:disabled {
+    background-color: #F3F4F6;
+    border-color: #D1D5DB;
+}
+
+QCheckBox::indicator:checked:disabled {
+    background-color: #93C5FD;
+    border-color: #93C5FD;
+}
+
+/* === QSlider：groove + handle 按下/焦点 === */
 QSlider {
     font-size: {{FONT_BASE}}px;
     min-height: {{BTN_H}}px;
@@ -277,11 +393,17 @@ QSlider::handle:horizontal {
     margin: -9px 0;
     border-radius: 14px;
     background: #2563EB;
-    border: 1px solid #1D4ED8;
+    border: 2px solid #1D4ED8;
 }
 
 QSlider::handle:horizontal:hover {
     background: #1D4ED8;
+    border-color: #1D4ED8;
+}
+
+QSlider::handle:horizontal:pressed {
+    background: #1E40AF;
+    border-color: #1E3A8A;
 }
 
 QSlider::sub-page:horizontal {
@@ -289,22 +411,108 @@ QSlider::sub-page:horizontal {
     border-radius: 6px;
 }
 
-/* === QComboBox / QLineEdit === */
+/* === 车机亮度卡片：大滑条 + 大号百分比 === */
+QFrame#brightnessCard {
+    background-color: #FFFFFF;
+    border-radius: 10px;
+    border: 1px solid #D1D5DB;
+}
+
+QFrame#brightnessCard[disabled="true"] {
+    background-color: #F3F4F6;
+    border-color: #E5E7EB;
+}
+
+QFrame#brightnessCard QLabel#brightnessPercent {
+    font-size: {{FONT_BIG}}px;
+    font-weight: 600;
+    color: #1E3A8A;
+    min-height: {{BTN_H}}px;
+}
+
+QSlider#brightnessSlider {
+    min-height: {{BTN_H}}px;
+    margin: {{GAP}}px 0;
+}
+
+QSlider#brightnessSlider::groove:horizontal {
+    height: 16px;
+    border-radius: 8px;
+    background: #E5E7EB;
+    border: 1px solid #D1D5DB;
+}
+
+QSlider#brightnessSlider::handle:horizontal {
+    width: {{BTN_H}}px;
+    height: {{BTN_H}}px;
+    min-height: {{BTN_H}}px;
+    margin: -12px 0;
+    border-radius: 8px;
+    background: #2563EB;
+    border: 2px solid #1D4ED8;
+}
+
+QSlider#brightnessSlider::handle:horizontal:hover {
+    background: #1D4ED8;
+    border-color: #1D4ED8;
+}
+
+QSlider#brightnessSlider::handle:horizontal:pressed {
+    background: #1E40AF;
+    border-color: #1E3A8A;
+}
+
+QSlider#brightnessSlider::sub-page:horizontal {
+    background: #93C5FD;
+    border-radius: 8px;
+}
+
+/* 亮度卡片内快捷按钮：夜间/日间（compact + primary） */
+QFrame#brightnessCard QPushButton[compact="true"] {
+    min-height: {{BTN_H}}px;
+    padding: {{GAP}}px {{PAD_CARD}}px;
+}
+
+QFrame#brightnessCard QPushButton[compact="true"][primary="true"] {
+    background-color: #2563EB;
+    color: #FFFFFF;
+    border-color: #2563EB;
+}
+
+QFrame#brightnessCard QPushButton[compact="true"][primary="true"]:hover {
+    background-color: #1D4ED8;
+    border-color: #1D4ED8;
+}
+
+QFrame#brightnessCard QPushButton[compact="true"][primary="true"]:pressed {
+    background-color: #1E40AF;
+    border-color: #1E3A8A;
+}
+
+/* === QComboBox / QLineEdit：min-height、按下/禁用/焦点 === */
 QComboBox, QLineEdit {
     font-size: {{FONT_BASE}}px;
     min-height: {{BTN_H}}px;
     padding: {{GAP}}px {{PAD_CARD}}px;
-    border: 1px solid #D1D5DB;
+    border: 2px solid #D1D5DB;
     border-radius: 8px;
     background-color: #FFFFFF;
+    color: #1F2937;
 }
 
 QComboBox:hover, QLineEdit:hover {
     border-color: #9CA3AF;
 }
 
-QLineEdit:focus {
-    border-color: #2563EB;
+QComboBox:focus, QLineEdit:focus {
+    border: 2px solid #2563EB;
+    outline: none;
+}
+
+QComboBox:disabled, QLineEdit:disabled {
+    background-color: #F3F4F6;
+    color: #6B7280;
+    border-color: #D1D5DB;
 }
 
 QComboBox::drop-down {
@@ -338,10 +546,12 @@ QFrame#compactToggleRow {
 
 QLabel#compactToggleTitle {
     font-size: {{FONT_BASE}}px;
+    color: #1F2937;
 }
 
 QLabel#compactToggleSubtitle {
     font-size: {{FONT_SMALL}}px;
+    color: #4B5563;
 }
 
 QFrame#twoColumnFormRow {
@@ -351,6 +561,7 @@ QFrame#twoColumnFormRow {
 
 QLabel#twoColumnFormLabel {
     font-size: {{FONT_BASE}}px;
+    color: #1F2937;
 }
 
 /* === QTabBar（如使用） === */
@@ -371,7 +582,7 @@ QTabBar::tab:selected {
     background-color: #FFFFFF;
     border-color: #2563EB;
     color: #2563EB;
-    font-weight: bold;
+    font-weight: 600;
 }
 
 QTabBar::tab:hover:!selected {
@@ -383,11 +594,12 @@ QFrame#alarmBanner {
     font-size: {{FONT_BASE}}px;
     min-height: {{BTN_H}}px;
     padding: {{GAP}}px {{PAD_PAGE}}px;
+    font-weight: 600;
 }
 
 QFrame#alarmBanner[severity="critical"] {
     background-color: #B91C1C;
-    color: white;
+    color: #FFFFFF;
 }
 
 QFrame#alarmBanner[severity="warn"] {
@@ -397,13 +609,13 @@ QFrame#alarmBanner[severity="warn"] {
 
 QFrame#alarmBanner[severity="info"] {
     background-color: #16A34A;
-    color: white;
+    color: #FFFFFF;
 }
 
 QFrame#alarmBanner QPushButton {
     background-color: rgba(255,255,255,0.3);
     color: inherit;
-    border: 1px solid rgba(255,255,255,0.5);
+    border: 2px solid rgba(255,255,255,0.5);
     min-height: {{BTN_H}}px;
 }
 
@@ -413,17 +625,22 @@ QFrame#alarmBanner QPushButton:hover {
 
 QFrame#alarmBanner QPushButton:disabled {
     background-color: rgba(255,255,255,0.2);
-    opacity: 0.8;
+    color: rgba(255,255,255,0.9);
 }
 
-/* === 状态栏 === */
+/* === 状态栏（暗底文字可读） === */
 QFrame#statusBar {
-    background-color: #D1D5DB;
+    background-color: #9CA3AF;
     border-radius: 0;
     min-height: {{STATUS_BAR_H}}px;
+    color: #1F2937;
 }
 
-/* === StatusLight 红绿灯（kind 动态属性） === */
+QFrame#statusBar QLabel {
+    color: #1F2937;
+}
+
+/* === StatusLight 红绿灯 === */
 QLabel#statusLight[kind="ok"] {
     background-color: #22C55E;
     border-radius: 10px;
@@ -447,19 +664,21 @@ QLabel#statusLight[kind="unknown"] {
 /* === 离线横幅 severity === */
 QFrame#offlineBanner {
     background-color: #B91C1C;
-    color: white;
+    color: #FFFFFF;
     padding: {{GAP}}px {{PAD_CARD}}px;
     font-size: {{FONT_SMALL}}px;
-    font-weight: bold;
+    font-weight: 600;
     border-radius: 6px;
 }
 
 /* === 可折叠标题按钮 === */
 QPushButton#collapsibleHeaderBtn {
     text-align: left;
-    font-weight: bold;
+    font-weight: 600;
     padding: {{GAP}}px {{PAD_CARD}}px;
     min-height: {{BTN_H}}px;
+    font-size: {{FONT_BASE}}px;
+    color: #1F2937;
 }
 
 /* === More 子页头部 === */
@@ -472,7 +691,7 @@ QFrame#moreHeader QPushButton {
     min-height: {{BTN_H}}px;
 }
 
-/* === 视频区域 === */
+/* === 视频区域（暗底提示文字可读） === */
 QFrame#videoWidget {
     background-color: #1a1a1a;
     border: none;
@@ -494,14 +713,15 @@ QLabel#slaveDot[severity="crit"] {
 }
 
 QLabel#slaveDot[severity="unknown"] {
-    color: #6B7280;
+    color: #4B5563;
     font-size: {{FONT_SMALL}}px;
 }
 
-/* === 卡片标题（替代内联 font-size） === */
+/* === 卡片标题 === */
 QLabel#cardTitle {
     font-size: {{FONT_TITLE}}px;
-    font-weight: bold;
+    font-weight: 600;
+    color: #1F2937;
 }
 
 /* === 其他 === */
@@ -517,7 +737,7 @@ QScrollArea {
 QScrollBar:vertical {
     width: 10px;
     border-radius: 5px;
-    background-color: #F3F4F6;
+    background-color: #E5E7EB;
     margin: 0;
 }
 
@@ -531,12 +751,17 @@ QScrollBar::handle:vertical:hover {
     background-color: #6B7280;
 }
 
+QScrollBar::handle:vertical:pressed {
+    background-color: #4B5563;
+}
+
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
 }
 
 QTableWidget {
     font-size: {{FONT_BASE}}px;
+    color: #1F2937;
 }
 
 QPushButton#cameraSourceBtn {
@@ -550,4 +775,19 @@ QPushButton#cameraModeBtn {
 
 QLabel#cameraStatusLabel {
     font-size: {{FONT_SMALL}}px;
+    color: #4B5563;
+}
+
+QLabel#cameraEmbedPlaceholder {
+    font-size: {{FONT_BASE}}px;
+    color: #1F2937;
+    background-color: #F3F4F6;
+    padding: {{PAD_PAGE}}px;
+    border: 2px solid #9CA3AF;
+}
+
+/* === 提示文本（hintText objectName 可选） === */
+QLabel#hintText {
+    font-size: {{FONT_SMALL}}px;
+    color: #4B5563;
 }

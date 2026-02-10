@@ -25,6 +25,13 @@ from app.ui.pages.base import PageBase
 from app.ui.layout_profile import LayoutTokens, get_tokens
 from app.core.alarm_engine import Alarm, Severity
 
+def _get_video_diagnostics() -> dict:
+    try:
+        from app.services.video_manager import get_diagnostics
+        return get_diagnostics()
+    except Exception:
+        return {}
+
 # 告警 ID -> 建议动作
 SUGGESTED_ACTIONS: dict[str, str] = {
     "HVAC_HP_TRIP": "检查制冷系统压力，联系售后",
@@ -211,6 +218,34 @@ class DiagnosticsPage(PageBase):
             self._slave_rows.append((dot, err_lbl, last_lbl))
         inner_layout.addWidget(slave_card)
 
+        # 视频诊断：折叠区块，默认折叠
+        video_diag_section = CollapsibleSection("视频诊断", t, self)
+        video_diag_inner = QWidget()
+        vd_ly = QVBoxLayout(video_diag_inner)
+        vd_ly.setSpacing(4)
+        self._vd_session = QLabel("--")
+        self._vd_sink = QLabel("--")
+        self._vd_overlay = QLabel("--")
+        vd_ly.addWidget(QLabel("会话类型 (XDG_SESSION_TYPE):"))
+        vd_ly.addWidget(self._vd_session)
+        vd_ly.addWidget(QLabel("Sink:"))
+        vd_ly.addWidget(self._vd_sink)
+        vd_ly.addWidget(QLabel("Overlay 嵌入支持:"))
+        vd_ly.addWidget(self._vd_overlay)
+        self._vd_error_btn = QPushButton("显示最近错误")
+        self._vd_error_btn.setCheckable(True)
+        self._vd_error_btn.setMinimumHeight(bh)
+        self._vd_error_btn.toggled.connect(self._on_video_error_toggled)
+        vd_ly.addWidget(self._vd_error_btn)
+        self._vd_error_lbl = QLabel("")
+        self._vd_error_lbl.setWordWrap(True)
+        self._vd_error_lbl.setVisible(False)
+        vd_ly.addWidget(self._vd_error_lbl)
+        video_diag_section.set_content(video_diag_inner)
+        inner_layout.addWidget(video_diag_section)
+        self._video_diag_section = video_diag_section
+        self._refresh_video_diagnostics()
+
         # 告警列表：折叠区块，默认折叠
         alarm_section = CollapsibleSection("告警列表", t, self)
         alarm_section.set_expanded(False)
@@ -331,7 +366,25 @@ class DiagnosticsPage(PageBase):
         if self._alarm_controller:
             self._alarm_controller.ack_all_warn()
 
+    def _refresh_video_diagnostics(self) -> None:
+        diag = _get_video_diagnostics()
+        self._vd_session.setText(diag.get("session_type", "--"))
+        self._vd_sink.setText(diag.get("selected_sink", "--"))
+        self._vd_overlay.setText("是" if diag.get("overlay_supported") else "否")
+        err = (diag.get("last_error") or "").strip()
+        self._vd_error_lbl.setText(err or "无")
+        self._vd_error_btn.setText("显示最近错误" if not self._vd_error_btn.isChecked() else "收起最近错误")
+
+    def _on_video_error_toggled(self, checked: bool) -> None:
+        self._vd_error_lbl.setVisible(checked)
+        self._vd_error_btn.setText("收起最近错误" if checked else "显示最近错误")
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._refresh_video_diagnostics()
+
     def _refresh_once(self) -> None:
         if self._app_state:
             self._on_state_changed(self._app_state.get_snapshot())
         self._refresh_alarm_table()
+        self._refresh_video_diagnostics()
