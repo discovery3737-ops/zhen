@@ -1,25 +1,34 @@
-"""小屏友好：左侧 label（可带副标题），右侧 Switch/Checkbox，整体高度 >= 44px。依赖 QSS，不写死颜色。"""
+"""小屏友好：左侧 label（可带副标题），右侧 Switch/Checkbox，整体高度 >= btn_h。支持 set_tokens。"""
+
+from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QLabel, QCheckBox, QWidget
 from PyQt6.QtCore import Qt
 
+if TYPE_CHECKING:
+    from app.ui.layout_profile import LayoutTokens
+
 
 class CompactToggleRow(QFrame):
-    """单行：左侧主标题（可选副标题），右侧开关/复选框；最小高度 44px。"""
+    """单行：左侧主标题（可选副标题），右侧开关/复选框；最小高度 btn_h。"""
 
     def __init__(
         self,
         label: str,
         subtitle: str = "",
+        tokens: "LayoutTokens | None" = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.setObjectName("compactToggleRow")
-        self.setMinimumHeight(44)
+        self._tokens = tokens
+        h = tokens.btn_h if tokens else 44
+        self.setMinimumHeight(h)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 4, 0, 4)
-        layout.setSpacing(12)
+        v = tokens.gap // 2 if tokens else 4
+        layout.setContentsMargins(0, v, 0, v)
+        layout.setSpacing(tokens.gap if tokens else 12)
 
         # 左侧：主标题 + 可选副标题
         label_w = QWidget()
@@ -58,3 +67,12 @@ class CompactToggleRow(QFrame):
     def checkbox(self) -> QCheckBox:
         """暴露右侧 QCheckBox，便于连接 toggled/clicked 与 setChecked。"""
         return self._check
+
+    def set_tokens(self, tokens: "LayoutTokens") -> None:
+        self._tokens = tokens
+        self.setMinimumHeight(tokens.btn_h)
+        layout = self.layout()
+        if layout:
+            v = tokens.gap // 2
+            layout.setContentsMargins(0, v, 0, v)
+            layout.setSpacing(tokens.gap)

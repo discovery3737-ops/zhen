@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 
 from app.ui.pages.base import PageBase
+from app.ui.layout_profile import LayoutTokens, get_tokens
 from app.core.alarm_engine import Alarm, Severity
 
 # 告警 ID -> 建议动作
@@ -103,22 +104,21 @@ class AlarmDetailDialog(QDialog):
 
 
 class CollapsibleSection(QFrame):
-    """可折叠区块：标题按钮 + 内容区"""
+    """可折叠区块：标题按钮 + 内容区。样式由 theme.qss collapsibleHeaderBtn 统一。"""
 
-    def __init__(self, title: str, parent=None):
+    def __init__(self, title: str, tokens: LayoutTokens | None, parent=None):
         super().__init__(parent)
         self.setObjectName("collapsibleSection")
         self._title = title
         self._content: QWidget | None = None
         self._expanded = False
+        t = tokens
         ly = QVBoxLayout(self)
         ly.setContentsMargins(0, 0, 0, 0)
-        self._header_btn = QPushButton()
+        self._header_btn = QPushButton(objectName="collapsibleHeaderBtn")
         self._header_btn.setCheckable(True)
-        self._header_btn.setMinimumHeight(44)
-        self._header_btn.setStyleSheet(
-            "text-align: left; font-weight: bold; padding: 8px 10px;"
-        )
+        bh = t.btn_h if t else 44
+        self._header_btn.setMinimumHeight(bh)
         self._header_btn.clicked.connect(self._toggle)
         ly.addWidget(self._header_btn)
         self._update_header_text()
@@ -145,7 +145,7 @@ class CollapsibleSection(QFrame):
 
 
 class DiagnosticsPage(PageBase):
-    """诊断页：从站列表（每行在线点+错误计数）+ 告警列表折叠"""
+    """诊断页：从站列表（每行在线点+错误计数）+ 告警列表折叠。布局由 tokens 驱动，无内联 setStyleSheet。"""
 
     def __init__(self, app_state=None, alarm_controller=None):
         super().__init__("诊断")
@@ -153,6 +153,8 @@ class DiagnosticsPage(PageBase):
         self._alarm_controller = alarm_controller
         self._alarms: list[Alarm] = []
         self._severity_filter: Severity | None = None
+        self._tokens: LayoutTokens | None = get_tokens()
+        t = self._tokens
         layout = self.layout()
         if layout is None:
             return
@@ -166,11 +168,10 @@ class DiagnosticsPage(PageBase):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
-        inner_layout.setSpacing(8)
-        inner_layout.setContentsMargins(10, 10, 10, 10)
+        inner_layout.setSpacing(t.gap if t else 8)
+        inner_layout.setContentsMargins(t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10)
 
         title = QLabel("诊断")
         title.setObjectName("pageTitle")
@@ -185,14 +186,15 @@ class DiagnosticsPage(PageBase):
         slave_title.setObjectName("accent")
         slave_layout.addWidget(slave_title)
         self._slave_rows: list[tuple[QLabel, QLabel, QLabel]] = []
+        bh = t.btn_h if t else 44
+        p, g = (t.pad_card if t else 8), (t.gap if t else 4)
         for sid in range(1, 10):
-            row_w = QFrame()
-            row_w.setMinimumHeight(44)
-            row_w.setStyleSheet("QFrame { background: transparent; }")
+            row_w = QFrame(objectName="slaveRow")
+            row_w.setMinimumHeight(bh)
             row_ly = QHBoxLayout(row_w)
-            row_ly.setContentsMargins(8, 4, 8, 4)
-            dot = QLabel("●")
-            dot.setStyleSheet("color: #6B7280; font-size: 14px;")
+            row_ly.setContentsMargins(p, g // 2, p, g // 2)
+            dot = QLabel("●", objectName="slaveDot")
+            dot.setProperty("severity", "unknown")
             dot.setFixedWidth(20)
             err_lbl = QLabel("0")
             err_lbl.setMinimumWidth(36)
@@ -210,7 +212,7 @@ class DiagnosticsPage(PageBase):
         inner_layout.addWidget(slave_card)
 
         # 告警列表：折叠区块，默认折叠
-        alarm_section = CollapsibleSection("告警列表", self)
+        alarm_section = CollapsibleSection("告警列表", t, self)
         alarm_section.set_expanded(False)
         alarm_inner = QWidget()
         alarm_ly = QVBoxLayout(alarm_inner)
@@ -224,7 +226,7 @@ class DiagnosticsPage(PageBase):
         filter_row.addStretch()
         ack_warn_btn = QPushButton("一键 Ack 当前所有 WARN")
         ack_warn_btn.setObjectName("warn")
-        ack_warn_btn.setMinimumHeight(44)
+        ack_warn_btn.setMinimumHeight(bh)
         ack_warn_btn.clicked.connect(self._on_ack_all_warn)
         filter_row.addWidget(ack_warn_btn)
         alarm_ly.addLayout(filter_row)
@@ -234,7 +236,7 @@ class DiagnosticsPage(PageBase):
         self._alarm_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._alarm_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._alarm_table.cellClicked.connect(self._on_alarm_cell_clicked)
-        self._alarm_table.verticalHeader().setDefaultSectionSize(44)
+        self._alarm_table.verticalHeader().setDefaultSectionSize(bh)
         alarm_ly.addWidget(self._alarm_table)
         alarm_section.set_content(alarm_inner)
         inner_layout.addWidget(alarm_section)
@@ -278,17 +280,16 @@ class DiagnosticsPage(PageBase):
             sid = row + 1
             c = comm.get(sid)
             if c is None:
-                dot.setStyleSheet("color: #6B7280; font-size: 14px;")
+                dot.setProperty("severity", "unknown")
                 err_lbl.setText("--")
                 last_lbl.setText("--")
-                continue
-            if c.online:
-                dot.setStyleSheet("color: #22C55E; font-size: 14px;")
             else:
-                dot.setStyleSheet("color: #B91C1C; font-size: 14px;")
-            err_lbl.setText(str(c.error_count))
-            ts = getattr(c, "last_ok_ts", None) or 0.0
-            last_lbl.setText(_format_ts_short(ts))
+                dot.setProperty("severity", "ok" if c.online else "crit")
+                err_lbl.setText(str(c.error_count))
+                ts = getattr(c, "last_ok_ts", None) or 0.0
+                last_lbl.setText(_format_ts_short(ts))
+            dot.style().unpolish(dot)
+            dot.style().polish(dot)
 
     def _on_alarms_changed(self, alarms: list) -> None:
         self._alarms = alarms if isinstance(alarms, list) else []
@@ -304,7 +305,7 @@ class DiagnosticsPage(PageBase):
                 self._alarm_table.setItem(row, 2, QTableWidgetItem(f"{a.title}: {a.message}"))
                 self._alarm_table.setItem(row, 3, QTableWidgetItem("已确认" if a.ack else "未确认"))
                 btn = QPushButton("Ack")
-                btn.setMinimumHeight(44)
+                btn.setMinimumHeight(self._tokens.btn_h if self._tokens else 44)
                 btn.setEnabled(not a.ack)
                 btn.clicked.connect(lambda checked, aid=a.id: self._on_ack(aid))
                 self._alarm_table.setCellWidget(row, 4, btn)

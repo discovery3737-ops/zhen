@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 
 from app.ui.pages.base import PageBase
+from app.ui.layout_profile import LayoutTokens, get_tokens
 from app.ui.widgets.long_press_button import LongPressButton
 from app.devices.pdu import get_pdu_controller
 
@@ -51,11 +52,13 @@ def _awning_limit_str(ai: bool | None, ao: bool | None) -> str:
 
 
 class ExteriorPage(PageBase):
-    """外设页：顶部状态卡 + 支腿 2×2 + 遮阳棚 2×2 + 外部照明"""
+    """外设页：顶部状态卡 + 支腿 2×2 + 遮阳棚 2×2 + 外部照明。布局由 tokens 驱动。"""
 
     def __init__(self, app_state=None):
         super().__init__("外设")
         self._app_state = app_state
+        self._tokens: LayoutTokens | None = get_tokens()
+        t = self._tokens
         layout = self.layout()
         if layout is None:
             return
@@ -69,11 +72,10 @@ class ExteriorPage(PageBase):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         inner = QWidget()
         ly = QVBoxLayout(inner)
-        ly.setSpacing(8)
-        ly.setContentsMargins(10, 10, 10, 10)
+        ly.setSpacing(t.gap if t else 8)
+        ly.setContentsMargins(t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10)
 
         title = QLabel("外设")
         title.setObjectName("pageTitle")
@@ -109,10 +111,12 @@ class ExteriorPage(PageBase):
 
     def _build_status_card(self) -> QFrame:
         """限位状态、运行状态、E-STOP、故障码，紧凑两行"""
+        t = self._tokens
+        g, p = (t.gap if t else 6), (t.pad_page if t else 10)
         card = QFrame(objectName="card")
         ly = QVBoxLayout(card)
-        ly.setSpacing(4)
-        ly.setContentsMargins(10, 8, 10, 8)
+        ly.setSpacing(g // 2)
+        ly.setContentsMargins(p, p, p, p)
 
         row1 = QHBoxLayout()
         row1.addWidget(QLabel("支腿限位:", objectName="small"))
@@ -149,26 +153,25 @@ class ExteriorPage(PageBase):
 
     def _build_leg_card(self) -> QFrame:
         """支腿 2×2：Extend / Retract / Stop / 留空"""
+        t = self._tokens
+        g, p, bhk = (t.gap if t else 8), (t.pad_card if t else 10), (t.btn_h_key if t else 52)
         card = QFrame(objectName="card")
         ly = QVBoxLayout(card)
-        ly.setSpacing(8)
-        ly.setContentsMargins(10, 10, 10, 10)
+        ly.setSpacing(g)
+        ly.setContentsMargins(p, p, p, p)
 
         ly.addWidget(QLabel("支腿", objectName="accent"))
 
         grid = QGridLayout()
-        self._leg_extend_btn = LongPressButton("伸出")
+        self._leg_extend_btn = LongPressButton("伸出", tokens=t)
         self._leg_extend_btn.setHoldMs(1500)
-        self._leg_extend_btn.setMinimumHeight(52)
         self._leg_extend_btn.confirmed.connect(self._on_leg_extend)
-        self._leg_retract_btn = LongPressButton("收回")
+        self._leg_retract_btn = LongPressButton("收回", tokens=t)
         self._leg_retract_btn.setHoldMs(1500)
-        self._leg_retract_btn.setMinimumHeight(52)
         self._leg_retract_btn.confirmed.connect(self._on_leg_retract)
-        self._leg_stop_btn = LongPressButton("停止")
+        self._leg_stop_btn = LongPressButton("停止", tokens=t)
         self._leg_stop_btn.setHoldMs(1500)
         self._leg_stop_btn.setDanger(True)
-        self._leg_stop_btn.setMinimumHeight(52)
         self._leg_stop_btn.confirmed.connect(self._on_leg_stop)
 
         grid.addWidget(self._leg_extend_btn, 0, 0)
@@ -181,26 +184,25 @@ class ExteriorPage(PageBase):
 
     def _build_awning_card(self) -> QFrame:
         """遮阳棚 2×2：Extend / Retract / Stop / 留空"""
+        t = self._tokens
+        g, p = (t.gap if t else 8), (t.pad_card if t else 10)
         card = QFrame(objectName="card")
         ly = QVBoxLayout(card)
-        ly.setSpacing(8)
-        ly.setContentsMargins(10, 10, 10, 10)
+        ly.setSpacing(g)
+        ly.setContentsMargins(p, p, p, p)
 
         ly.addWidget(QLabel("遮阳棚", objectName="accent"))
 
         grid = QGridLayout()
-        self._awning_extend_btn = LongPressButton("伸出")
+        self._awning_extend_btn = LongPressButton("伸出", tokens=t)
         self._awning_extend_btn.setHoldMs(1500)
-        self._awning_extend_btn.setMinimumHeight(52)
         self._awning_extend_btn.confirmed.connect(self._on_awning_extend)
-        self._awning_retract_btn = LongPressButton("收回")
+        self._awning_retract_btn = LongPressButton("收回", tokens=t)
         self._awning_retract_btn.setHoldMs(1500)
-        self._awning_retract_btn.setMinimumHeight(52)
         self._awning_retract_btn.confirmed.connect(self._on_awning_retract)
-        self._awning_stop_btn = LongPressButton("停止")
+        self._awning_stop_btn = LongPressButton("停止", tokens=t)
         self._awning_stop_btn.setHoldMs(1500)
         self._awning_stop_btn.setDanger(True)
-        self._awning_stop_btn.setMinimumHeight(52)
         self._awning_stop_btn.confirmed.connect(self._on_awning_stop)
 
         grid.addWidget(self._awning_extend_btn, 0, 0)
@@ -213,11 +215,13 @@ class ExteriorPage(PageBase):
 
     def _build_ext_light_row(self) -> QHBoxLayout:
         """外部照明：独立一行大开关"""
+        t = self._tokens
+        bhk = t.btn_h_key if t else 52
         row = QHBoxLayout()
         row.addWidget(QLabel("外部照明", objectName="accent"))
         self._ext_light_btn = QPushButton("关")
         self._ext_light_btn.setCheckable(True)
-        self._ext_light_btn.setMinimumHeight(52)
+        self._ext_light_btn.setMinimumHeight(bhk)
         self._ext_light_btn.clicked.connect(self._on_ext_light_clicked)
         row.addWidget(self._ext_light_btn, 1)
         return row
@@ -254,7 +258,9 @@ class ExteriorPage(PageBase):
 
         estop = pd.e_stop
         self._estop_label.setText("已按下" if estop else "正常")
-        self._estop_label.setStyleSheet("color: #B91C1C; font-weight: bold;" if estop else "")
+        self._estop_label.setProperty("severity", "crit" if estop else "")
+        self._estop_label.style().unpolish(self._estop_label)
+        self._estop_label.style().polish(self._estop_label)
         fc = pd.pdu_fault_code
         self._fault_label.setText(str(fc) if fc is not None else "--")
 
@@ -325,6 +331,14 @@ class ExteriorPage(PageBase):
         ctrl = get_pdu_controller()
         if ctrl:
             ctrl.awning_stop()
+
+    def set_tokens(self, tokens: LayoutTokens) -> None:
+        super().set_tokens(tokens)
+        self._tokens = tokens
+        for lp in self.findChildren(LongPressButton):
+            lp.set_tokens(tokens)
+        if hasattr(self, "_ext_light_btn"):
+            self._ext_light_btn.setMinimumHeight(tokens.btn_h_key)
 
     def _on_ext_light_clicked(self, checked: bool) -> None:
         if not self._ensure_pdu_online():

@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 
 from app.ui.pages.base import PageBase
+from app.ui.layout_profile import LayoutTokens, get_tokens
 
 
 def _temp_str(x10: int | None) -> str:
@@ -38,11 +39,13 @@ def _lpg_str(x10: int | None) -> str:
 
 
 class EnvironmentPage(PageBase):
-    """环境页：室内外两张小卡片并排；气体一张大卡片；离线用横条"""
+    """环境页：室内外两张小卡片并排；气体一张大卡片；离线用横条。布局由 tokens 驱动。"""
 
     def __init__(self, app_state=None):
         super().__init__("环境")
         self._app_state = app_state
+        self._tokens: LayoutTokens | None = get_tokens()
+        t = self._tokens
         layout = self.layout()
         if layout is None:
             return
@@ -56,24 +59,19 @@ class EnvironmentPage(PageBase):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         inner = QWidget()
         ly = QVBoxLayout(inner)
-        ly.setSpacing(8)
-        ly.setContentsMargins(10, 10, 10, 10)
+        ly.setSpacing(t.gap if t else 8)
+        ly.setContentsMargins(t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10)
 
         title = QLabel("环境")
         title.setObjectName("pageTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ly.addWidget(title)
 
-        # 离线提示横条
+        # 离线提示横条（样式由 theme.qss QFrame#offlineBanner 统一）
         self._offline_banner = QFrame(objectName="offlineBanner")
         self._offline_banner.setVisible(False)
-        self._offline_banner.setStyleSheet(
-            "QFrame#offlineBanner { background-color: #B91C1C; color: white; "
-            "padding: 8px 10px; font-size: 12px; font-weight: bold; border-radius: 6px; }"
-        )
         offline_ly = QVBoxLayout(self._offline_banner)
         self._offline_label = QLabel("")
         self._offline_label.setWordWrap(True)
@@ -81,13 +79,14 @@ class EnvironmentPage(PageBase):
         ly.addWidget(self._offline_banner)
 
         # 室内 / 室外 两张小卡片并排
+        g, p = (t.gap if t else 8), (t.pad_card if t else 8)
         row_cards = QHBoxLayout()
-        row_cards.setSpacing(8)
+        row_cards.setSpacing(g)
 
         indoor_card = QFrame(objectName="card")
         indoor_ly = QVBoxLayout(indoor_card)
-        indoor_ly.setSpacing(4)
-        indoor_ly.setContentsMargins(8, 8, 8, 8)
+        indoor_ly.setSpacing(g // 2)
+        indoor_ly.setContentsMargins(p, p, p, p)
         indoor_ly.addWidget(QLabel("室内", objectName="accent"))
         self._cabin_temp_label = QLabel("--.- °C")
         self._cabin_temp_label.setObjectName("bigNumber")
@@ -99,8 +98,8 @@ class EnvironmentPage(PageBase):
 
         outdoor_card = QFrame(objectName="card")
         outdoor_ly = QVBoxLayout(outdoor_card)
-        outdoor_ly.setSpacing(4)
-        outdoor_ly.setContentsMargins(8, 8, 8, 8)
+        outdoor_ly.setSpacing(g // 2)
+        outdoor_ly.setContentsMargins(p, p, p, p)
         outdoor_ly.addWidget(QLabel("室外", objectName="accent"))
         self._out_temp_label = QLabel("--.- °C")
         self._out_temp_label.setObjectName("bigNumber")
@@ -115,8 +114,8 @@ class EnvironmentPage(PageBase):
         # 气体一张大卡片
         gas_card = QFrame(objectName="card")
         gas_ly = QVBoxLayout(gas_card)
-        gas_ly.setSpacing(8)
-        gas_ly.setContentsMargins(10, 10, 10, 10)
+        gas_ly.setSpacing(g)
+        gas_ly.setContentsMargins(p, p, p, p)
         gas_ly.addWidget(QLabel("气体", objectName="accent"))
         gas_ly.addWidget(QLabel("CO (ppm):"))
         self._co_label = QLabel("--")
@@ -183,11 +182,10 @@ class EnvironmentPage(PageBase):
             status_parts.append("故障")
         if status_parts:
             self._gas_status_label.setText(" | ".join(status_parts))
-            self._gas_status_label.setStyleSheet(
-                "font-size: 12px; color: #B91C1C; font-weight: bold;"
-                if (gas.gas_alarm or gas.gas_fault)
-                else "font-size: 12px; color: #EAB308;"
-            )
+            sev = "crit" if (gas.gas_alarm or gas.gas_fault) else "warn"
+            self._gas_status_label.setProperty("severity", sev)
         else:
             self._gas_status_label.setText("正常")
-            self._gas_status_label.setStyleSheet("font-size: 12px; color: #22C55E;")
+            self._gas_status_label.setProperty("severity", "ok")
+        self._gas_status_label.style().unpolish(self._gas_status_label)
+        self._gas_status_label.style().polish(self._gas_status_label)

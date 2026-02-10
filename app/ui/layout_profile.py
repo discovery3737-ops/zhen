@@ -17,7 +17,7 @@ def detect_profile(screen_w: int, screen_h: int) -> str:
 
 @dataclass
 class LayoutTokens:
-    """布局/字体/间距等 token，由 profile 决定数值。"""
+    """布局/字体/间距等 token，由 profile 决定数值。WVGA 优先触控：btn_h>=44, btn_h_key>=52。"""
 
     profile: str
     font_base: int      # 默认正文 px
@@ -32,10 +32,11 @@ class LayoutTokens:
     icon_btn_h: int     # IconButton 最小高度/宽 px
     status_bar_h: int   # 状态栏高度 px
     tab_bar_h: int      # 底部 TabBar 高度 px
+    tab_bar_v_margin: int  # TabBar 上下 margin，WVGA 下减小避免裁切
     scroll_handle_min: int  # 滚动条 handle 最小高度 px
 
 
-# WVGA: 800×480 可视高度紧张，适当下调以不牺牲触控（btn_h>=44, btn_h_key>=52）为前提
+# WVGA: 800×480 可视高度紧张，btn_h>=44, btn_h_key>=52，TabBar margin 4 避免裁切
 _WVGA = LayoutTokens(
     profile="WVGA",
     font_base=14,
@@ -50,6 +51,7 @@ _WVGA = LayoutTokens(
     icon_btn_h=56,
     status_bar_h=36,
     tab_bar_h=60,
+    tab_bar_v_margin=4,
     scroll_handle_min=28,
 )
 
@@ -68,6 +70,7 @@ _WXGA = LayoutTokens(
     icon_btn_h=72,
     status_bar_h=36,
     tab_bar_h=60,
+    tab_bar_v_margin=4,
     scroll_handle_min=40,
 )
 

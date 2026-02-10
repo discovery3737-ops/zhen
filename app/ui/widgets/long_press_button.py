@@ -1,18 +1,30 @@
-"""长按确认按钮"""
+"""长按确认按钮。支持 set_tokens 或构造传入 tokens，关键操作用 btn_h_key。"""
+
+from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import QPushButton
 from PyQt6.QtCore import QTimer, pyqtSignal, Qt
 from PyQt6.QtGui import QPaintEvent, QPainter, QColor, QBrush
 
+if TYPE_CHECKING:
+    from app.ui.layout_profile import LayoutTokens
+
 
 class LongPressButton(QPushButton):
-    """长按达到 hold_ms 后发射 confirmed()，松开提前则取消"""
+    """长按达到 hold_ms 后发射 confirmed()，松开提前则取消。默认 minHeight=btn_h_key(52)。"""
 
     confirmed = pyqtSignal()
 
-    def __init__(self, text: str = "", parent=None):
+    def __init__(
+        self,
+        text: str = "",
+        tokens: "LayoutTokens | None" = None,
+        parent=None,
+    ):
         super().__init__(text, parent)
-        self.setMinimumHeight(52)
+        self._tokens = tokens
+        h = tokens.btn_h_key if tokens else 52
+        self.setMinimumHeight(h)
         self._hold_ms = 2000
         self._progress = 0.0
         self._elapsed_ms = 0
@@ -34,6 +46,10 @@ class LongPressButton(QPushButton):
         self.setProperty("danger", str(danger).lower())
         self.style().unpolish(self)
         self.style().polish(self)
+
+    def set_tokens(self, tokens: "LayoutTokens") -> None:
+        self._tokens = tokens
+        self.setMinimumHeight(tokens.btn_h_key)
 
     def _start_hold(self) -> None:
         self._original_text = self.text()
@@ -69,16 +85,21 @@ class LongPressButton(QPushButton):
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             h = self.height()
-            bar_h = max(4, h // 8)
-            y = h - bar_h - 4
-            w = self.width() - 8
-            x = 4
+            m = self._bar_margin()
+            bar_h = max(m, h // 8)
+            y = h - bar_h - m
+            w = self.width() - m * 2
+            x = m
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(QColor(0, 0, 0, 60)))
             painter.drawRoundedRect(x, y, w, bar_h, bar_h // 2, bar_h // 2)
             painter.setBrush(QBrush(QColor(37, 99, 235, 200)))
             painter.drawRoundedRect(x, y, int(w * self._progress), bar_h, bar_h // 2, bar_h // 2)
             painter.end()
+
+    def _bar_margin(self) -> int:
+        t = self._tokens
+        return t.gap if t else 4
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

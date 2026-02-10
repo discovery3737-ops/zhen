@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 
 from app.ui.pages.base import PageBase
+from app.ui.layout_profile import LayoutTokens, get_tokens
 from app.ui.widgets import CompactToggleRow, TwoColumnFormRow
 from app.devices.lighting import get_lighting_controller
 
@@ -22,11 +23,13 @@ _LIGHTING_SLAVE_ID = 3
 
 
 class LightingPage(PageBase):
-    """灯光页：两列开关（CompactToggleRow >=44px）+ 灯带亮度滑条独占一行（TwoColumnFormRow）"""
+    """灯光页：两列开关（CompactToggleRow btn_h）+ 灯带亮度滑条。布局由 tokens 驱动。"""
 
     def __init__(self, app_state=None):
         super().__init__("灯光")
         self._app_state = app_state
+        self._tokens: LayoutTokens | None = get_tokens()
+        t = self._tokens
         layout = self.layout()
         if layout is None:
             return
@@ -40,11 +43,10 @@ class LightingPage(PageBase):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         inner = QWidget()
         ly = QVBoxLayout(inner)
-        ly.setSpacing(8)
-        ly.setContentsMargins(10, 10, 10, 10)
+        ly.setSpacing(t.gap if t else 8)
+        ly.setContentsMargins(t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10)
 
         title = QLabel("灯光")
         title.setObjectName("pageTitle")
@@ -53,17 +55,17 @@ class LightingPage(PageBase):
 
         card = QFrame(objectName="card")
         card_ly = QVBoxLayout(card)
-        card_ly.setSpacing(8)
-        card_ly.setContentsMargins(10, 10, 10, 10)
+        card_ly.setSpacing(t.gap if t else 8)
+        card_ly.setContentsMargins(t.pad_card if t else 10, t.pad_card if t else 10, t.pad_card if t else 10, t.pad_card if t else 10)
 
         # 两列开关：CompactToggleRow
-        self._main_row = CompactToggleRow("顶主灯")
+        self._main_row = CompactToggleRow("顶主灯", tokens=t)
         self._main_row.checkbox().toggled.connect(self._on_main_clicked)
-        self._night_row = CompactToggleRow("夜灯")
+        self._night_row = CompactToggleRow("夜灯", tokens=t)
         self._night_row.checkbox().toggled.connect(self._on_night_clicked)
-        self._reading_row = CompactToggleRow("阅读灯")
+        self._reading_row = CompactToggleRow("阅读灯", tokens=t)
         self._reading_row.checkbox().toggled.connect(self._on_reading_clicked)
-        self._strip_row = CompactToggleRow("灯带")
+        self._strip_row = CompactToggleRow("灯带", tokens=t)
         self._strip_row.checkbox().toggled.connect(self._on_strip_clicked)
 
         grid = QGridLayout()
@@ -85,15 +87,16 @@ class LightingPage(PageBase):
         slider_ly.setContentsMargins(0, 0, 0, 0)
         slider_ly.addWidget(self._strip_slider, 1)
         slider_ly.addWidget(self._strip_value_label)
-        card_ly.addWidget(TwoColumnFormRow("灯带亮度", slider_row))
+        card_ly.addWidget(TwoColumnFormRow("灯带亮度", slider_row, tokens=t))
 
         # 场景
+        bh = t.btn_h if t else 44
         scene_row = QHBoxLayout()
         self._sleep_btn = QPushButton("Sleep")
-        self._sleep_btn.setMinimumHeight(44)
+        self._sleep_btn.setMinimumHeight(bh)
         self._sleep_btn.clicked.connect(self._on_sleep_clicked)
         self._reading_scene_btn = QPushButton("Reading")
-        self._reading_scene_btn.setMinimumHeight(44)
+        self._reading_scene_btn.setMinimumHeight(bh)
         self._reading_scene_btn.clicked.connect(self._on_reading_scene_clicked)
         scene_row.addWidget(self._sleep_btn)
         scene_row.addWidget(self._reading_scene_btn)
@@ -187,6 +190,12 @@ class LightingPage(PageBase):
         ctrl = get_lighting_controller()
         if ctrl:
             ctrl.scene_sleep_pulse()
+
+    def set_tokens(self, tokens: LayoutTokens) -> None:
+        super().set_tokens(tokens)
+        self._tokens = tokens
+        for row in (self._main_row, self._night_row, self._reading_row, self._strip_row):
+            row.set_tokens(tokens)
 
     def _on_reading_scene_clicked(self) -> None:
         if not self._ensure_online_then_write(_LIGHTING_SLAVE_ID):

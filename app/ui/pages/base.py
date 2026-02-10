@@ -24,7 +24,6 @@ class PageBase(QWidget):
         todo_label = QLabel("TODO")
         todo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         todo_label.setObjectName("accent")
-        todo_label.setStyleSheet("font-size: 14px;")
         layout.addWidget(todo_label)
 
         layout.addStretch()

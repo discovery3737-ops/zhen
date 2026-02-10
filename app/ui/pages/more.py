@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from app.ui.pages.base import PageBase
-from app.ui.layout_profile import LayoutTokens
+from app.ui.layout_profile import LayoutTokens, get_tokens
 
 
 SUB_INDEX_MENU = 0
@@ -25,20 +25,22 @@ SUB_INDEX_CAMERA = 5
 
 
 class MoreMenuWidget(QWidget):
-    """More 菜单：5 个大按钮，触控 >= 52px"""
+    """More 菜单：5 个大按钮，触控 >= btn_h_key"""
 
-    def __init__(self, on_item_clicked=None, parent=None):
+    def __init__(self, on_item_clicked=None, tokens: LayoutTokens | None = None, parent=None):
         super().__init__(parent)
         self._on_item_clicked = on_item_clicked
+        t = tokens
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(t.gap if t else 8)
+        layout.setContentsMargins(t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10)
 
         title = QLabel("更多")
         title.setObjectName("pageTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
+        bhk = t.btn_h_key if t else 52
         items = [
             ("灯光", SUB_INDEX_LIGHTING),
             ("环境", SUB_INDEX_ENVIRONMENT),
@@ -48,7 +50,7 @@ class MoreMenuWidget(QWidget):
         ]
         for label, idx in items:
             btn = QPushButton(label, objectName="tabButton")
-            btn.setMinimumHeight(52)
+            btn.setMinimumHeight(bhk)
             btn.setProperty("sub_index", idx)
             btn.clicked.connect(lambda checked, i=idx: self._on_click(i))
             layout.addWidget(btn)
@@ -60,7 +62,7 @@ class MoreMenuWidget(QWidget):
 
 
 class MorePage(PageBase):
-    """More 容器：菜单 + 子页面堆叠，带返回按钮"""
+    """More 容器：菜单 + 子页面堆叠，带返回按钮。布局由 tokens 驱动。"""
 
     def __init__(
         self,
@@ -82,6 +84,7 @@ class MorePage(PageBase):
         self._back_btn: QPushButton | None = None
         self._header: QWidget | None = None
         self._sub_widgets: list[QWidget] = []
+        self._tokens: LayoutTokens | None = get_tokens()
         self._setup_ui()
 
     def _setup_ui(self):
@@ -97,22 +100,25 @@ class MorePage(PageBase):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 子页头部（返回按钮），默认隐藏
-        self._header = QFrame()
+        # 子页头部（返回按钮），默认隐藏。样式由 theme.qss moreHeader 统一
+        self._header = QFrame(objectName="moreHeader")
         self._header.setVisible(False)
-        self._header.setFixedHeight(48)
-        self._header.setStyleSheet("background: #E5E7EB; border-bottom: 1px solid #9CA3AF;")
+        t = self._tokens
+        h = t.icon_btn_h if t else 48
+        self._header.setFixedHeight(h)
         header_layout = QHBoxLayout(self._header)
         header_layout.setContentsMargins(10, 4, 10, 4)
+        t = self._tokens
+        bh = t.btn_h if t else 44
         self._back_btn = QPushButton("← 返回", objectName="tabButton")
-        self._back_btn.setMinimumHeight(44)
+        self._back_btn.setMinimumHeight(bh)
         self._back_btn.clicked.connect(self._go_back)
         header_layout.addWidget(self._back_btn)
         header_layout.addStretch()
         main_layout.addWidget(self._header)
 
         self._stack = QStackedWidget()
-        menu = MoreMenuWidget(on_item_clicked=self._on_menu_item_clicked)
+        menu = MoreMenuWidget(on_item_clicked=self._on_menu_item_clicked, tokens=self._tokens)
         self._stack.addWidget(menu)
 
         # 子页面
@@ -145,7 +151,6 @@ class MorePage(PageBase):
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.Shape.NoFrame)
             scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
             scroll.setWidget(w)
             self._stack.addWidget(scroll)
 

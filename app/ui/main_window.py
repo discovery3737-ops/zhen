@@ -70,7 +70,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
 
         t = self._tokens
-        status_h = min(t.status_bar_h, 56)
+        status_h = min(t.status_bar_h, t.icon_btn_h)
 
         # 顶部状态栏（压缩 <= 56px，WVGA 仅显示：时间、SOC、告警图标、通讯图标）
         status_bar = self._build_status_bar(status_h)
@@ -78,7 +78,7 @@ class MainWindow(QMainWindow):
 
         # 告警横幅
         if self._app_state and self._alarm_controller:
-            self._alarm_banner = AlarmBanner(self._app_state, self._alarm_controller, self)
+            self._alarm_banner = AlarmBanner(self._app_state, self._alarm_controller, tokens=t, parent=self)
             layout.addWidget(self._alarm_banner)
 
         # 中间内容区
@@ -188,7 +188,7 @@ class MainWindow(QMainWindow):
 
     def _build_tab_bar(self, t: LayoutTokens) -> QWidget:
         tab_bar = QWidget(objectName="tabBar")
-        top_m, bot_m = 4, 4  # 减小 margin，避免 WVGA 下 content_h < icon_btn_h 导致裁切
+        top_m = bot_m = t.tab_bar_v_margin
         content_needed = t.icon_btn_h
         h = max(t.tab_bar_h, content_needed + top_m + bot_m)
         tab_bar.setFixedHeight(h)

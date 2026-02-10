@@ -1,4 +1,4 @@
-"""空调页面 - WVGA 单列卡片布局：HVAC 快速控制 | 危险控制+状态灯 | Webasto | 可折叠高级参数"""
+"""空调页面 - WVGA 单列卡片布局；布局由 LayoutTokens 驱动，无内联 setStyleSheet。"""
 
 from PyQt6.QtWidgets import (
     QWidget,
@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 
 from app.ui.pages.base import PageBase
+from app.ui.layout_profile import LayoutTokens, get_tokens
 from app.ui.widgets.long_press_button import LongPressButton
 from app.devices.hvac import get_hvac_controller
 from app.devices.webasto import get_webasto_controller
@@ -46,28 +47,33 @@ def _pwm_str(x10: int | None) -> str:
 
 
 class StatusLight(QLabel):
-    """红绿灯指示：绿=OK，红=异常，灰=未知"""
+    """红绿灯指示：绿=OK，红=异常，灰=未知。用 kind 动态属性 + theme.qss。"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("statusLight")
         self.setFixedSize(20, 20)
         self.set_ok(None)
 
     def set_ok(self, ok: bool | None) -> None:
         if ok is None:
-            self.setStyleSheet("background-color: #9CA3AF; border-radius: 10px;")
+            self.setProperty("kind", "unknown")
         elif ok:
-            self.setStyleSheet("background-color: #22C55E; border-radius: 10px;")
+            self.setProperty("kind", "ok")
         else:
-            self.setStyleSheet("background-color: #EF4444; border-radius: 10px;")
+            self.setProperty("kind", "crit")
+        self.style().unpolish(self)
+        self.style().polish(self)
 
 
 class HvacPage(PageBase):
-    """空调页：单列 3 卡片 + 可折叠高级参数，WVGA 布局"""
+    """空调页：单列 3 卡片 + 可折叠高级参数，布局由 tokens 驱动。"""
 
     def __init__(self, app_state=None):
         super().__init__("空调")
         self._app_state = app_state
+        self._tokens: LayoutTokens | None = get_tokens()
+        t = self._tokens
         layout = self.layout()
         if layout is None:
             return
@@ -81,11 +87,10 @@ class HvacPage(PageBase):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         inner = QWidget()
         ly = QVBoxLayout(inner)
-        ly.setSpacing(8)
-        ly.setContentsMargins(10, 10, 10, 10)
+        ly.setSpacing(t.gap if t else 8)
+        ly.setContentsMargins(t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10, t.pad_page if t else 10)
 
         title = QLabel("空调")
         title.setObjectName("pageTitle")
@@ -122,18 +127,21 @@ class HvacPage(PageBase):
 
     def _build_card1_hvac_quick(self) -> QFrame:
         """Card 1: MODE、目标温度 +/-、风机档位"""
+        t = self._tokens
+        g, p = (t.gap if t else 10), (t.pad_card if t else 10)
         card = QFrame(objectName="card")
         ly = QVBoxLayout(card)
-        ly.setSpacing(10)
-        ly.setContentsMargins(10, 10, 10, 10)
+        ly.setSpacing(g)
+        ly.setContentsMargins(p, p, p, p)
 
         ly.addWidget(QLabel("HVAC 快速控制", objectName="accent"))
 
         # MODE
+        bh = t.btn_h if t else 44
         row_mode = QHBoxLayout()
         row_mode.addWidget(QLabel("MODE"))
         self._mode_combo = QComboBox()
-        self._mode_combo.setMinimumHeight(44)
+        self._mode_combo.setMinimumHeight(bh)
         for label, val in MODE_ITEMS:
             self._mode_combo.addItem(label, val)
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
@@ -144,13 +152,13 @@ class HvacPage(PageBase):
         row_temp = QHBoxLayout()
         row_temp.addWidget(QLabel("目标温度"))
         self._temp_down = QPushButton("-")
-        self._temp_down.setMinimumSize(44, 44)
+        self._temp_down.setMinimumSize(bh, bh)
         self._temp_down.clicked.connect(self._on_temp_down)
         self._temp_label = QLabel("--.- °C")
         self._temp_label.setMinimumWidth(64)
         self._temp_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._temp_up = QPushButton("+")
-        self._temp_up.setMinimumSize(44, 44)
+        self._temp_up.setMinimumSize(bh, bh)
         self._temp_up.clicked.connect(self._on_temp_up)
         row_temp.addWidget(self._temp_down)
         row_temp.addWidget(self._temp_label, 1)
@@ -182,10 +190,12 @@ class HvacPage(PageBase):
 
     def _build_card2_hvac_danger(self) -> QFrame:
         """Card 2: COMP_ENABLE LongPress、AC_ENABLE 开关 + HP/LP/冷媒 三色灯"""
+        t = self._tokens
+        g, p, bh, bhk = (t.gap if t else 10), (t.pad_card if t else 10), (t.btn_h if t else 44), (t.btn_h_key if t else 52)
         card = QFrame(objectName="card")
         ly = QVBoxLayout(card)
-        ly.setSpacing(10)
-        ly.setContentsMargins(10, 10, 10, 10)
+        ly.setSpacing(g)
+        ly.setContentsMargins(p, p, p, p)
 
         ly.addWidget(QLabel("危险控制", objectName="accent"))
 
@@ -194,7 +204,7 @@ class HvacPage(PageBase):
         row_ac.addWidget(QLabel("AC 使能"))
         self._ac_enable = QPushButton("关")
         self._ac_enable.setCheckable(True)
-        self._ac_enable.setMinimumHeight(44)
+        self._ac_enable.setMinimumHeight(bh)
         self._ac_enable.clicked.connect(self._on_ac_enable_clicked)
         row_ac.addWidget(self._ac_enable, 1)
         ly.addLayout(row_ac)
@@ -202,10 +212,9 @@ class HvacPage(PageBase):
         # COMP_ENABLE LongPress
         row_comp = QHBoxLayout()
         row_comp.addWidget(QLabel("压缩机"))
-        self._comp_enable = LongPressButton("长按开启压缩机")
+        self._comp_enable = LongPressButton("长按开启压缩机", tokens=t)
         self._comp_enable.setDanger(True)
         self._comp_enable.setHoldMs(2000)
-        self._comp_enable.setMinimumHeight(52)
         self._comp_enable.confirmed.connect(self._on_comp_enable_confirmed)
         row_comp.addWidget(self._comp_enable, 1)
         ly.addLayout(row_comp)
@@ -228,24 +237,24 @@ class HvacPage(PageBase):
 
     def _build_card3_webasto(self) -> QFrame:
         """Card 3: 启停 LongPress、目标水温、水泵、状态/故障"""
+        t = self._tokens
+        g, p, bh, bhk = (t.gap if t else 10), (t.pad_card if t else 10), (t.btn_h if t else 44), (t.btn_h_key if t else 52)
         card = QFrame(objectName="card")
         ly = QVBoxLayout(card)
-        ly.setSpacing(10)
-        ly.setContentsMargins(10, 10, 10, 10)
+        ly.setSpacing(g)
+        ly.setContentsMargins(p, p, p, p)
 
         ly.addWidget(QLabel("Webasto", objectName="accent"))
 
         # 加热器 LongPress
         row_heater = QHBoxLayout()
         row_heater.addWidget(QLabel("加热器"))
-        self._heater_on_btn = LongPressButton("长按开启")
+        self._heater_on_btn = LongPressButton("长按开启", tokens=t)
         self._heater_on_btn.setHoldMs(2000)
-        self._heater_on_btn.setMinimumHeight(52)
         self._heater_on_btn.confirmed.connect(lambda: self._on_heater_set(True))
-        self._heater_off_btn = LongPressButton("长按关闭")
+        self._heater_off_btn = LongPressButton("长按关闭", tokens=t)
         self._heater_off_btn.setHoldMs(2000)
         self._heater_off_btn.setDanger(True)
-        self._heater_off_btn.setMinimumHeight(52)
         self._heater_off_btn.confirmed.connect(lambda: self._on_heater_set(False))
         row_heater.addWidget(self._heater_on_btn)
         row_heater.addWidget(self._heater_off_btn)
@@ -255,13 +264,13 @@ class HvacPage(PageBase):
         row_wt = QHBoxLayout()
         row_wt.addWidget(QLabel("目标水温"))
         self._wt_down = QPushButton("-")
-        self._wt_down.setMinimumSize(44, 44)
+        self._wt_down.setMinimumSize(bh, bh)
         self._wt_down.clicked.connect(self._on_wt_down)
         self._wt_label = QLabel("--.- °C")
         self._wt_label.setMinimumWidth(64)
         self._wt_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._wt_up = QPushButton("+")
-        self._wt_up.setMinimumSize(44, 44)
+        self._wt_up.setMinimumSize(bh, bh)
         self._wt_up.clicked.connect(self._on_wt_up)
         row_wt.addWidget(self._wt_down)
         row_wt.addWidget(self._wt_label, 1)
@@ -279,7 +288,7 @@ class HvacPage(PageBase):
         row_pump.addWidget(QLabel("水循环泵"))
         self._pump_on = QPushButton("关")
         self._pump_on.setCheckable(True)
-        self._pump_on.setMinimumHeight(44)
+        self._pump_on.setMinimumHeight(bh)
         self._pump_on.clicked.connect(self._on_pump_clicked)
         row_pump.addWidget(self._pump_on, 1)
         ly.addLayout(row_pump)
@@ -301,10 +310,12 @@ class HvacPage(PageBase):
 
     def _build_collapsible_advanced(self) -> tuple[QWidget, QPushButton]:
         """可折叠区域：故障码、压缩机/蒸发/冷凝 PWM（默认收起）"""
+        t = self._tokens
+        g, p, bh = (t.gap if t else 8), (t.pad_card if t else 10), (t.btn_h if t else 44)
         content = QFrame(objectName="card")
         content_ly = QVBoxLayout(content)
-        content_ly.setContentsMargins(10, 10, 10, 10)
-        content_ly.setSpacing(8)
+        content_ly.setContentsMargins(p, p, p, p)
+        content_ly.setSpacing(g)
 
         grid = QGridLayout()
         grid.addWidget(QLabel("故障码"), 0, 0)
@@ -322,7 +333,7 @@ class HvacPage(PageBase):
         content_ly.addLayout(grid)
 
         btn = QPushButton("▼ 实际PWM / 故障码详情")
-        btn.setMinimumHeight(44)
+        btn.setMinimumHeight(bh)
         btn.setCheckable(True)
         btn.setChecked(False)
         content.setVisible(False)
@@ -334,6 +345,20 @@ class HvacPage(PageBase):
         btn.clicked.connect(_on_toggle)
 
         return content, btn
+
+    def set_tokens(self, tokens: LayoutTokens) -> None:
+        super().set_tokens(tokens)
+        self._tokens = tokens
+        layout = self.layout()
+        if layout and layout.count() > 0:
+            w = layout.itemAt(0).widget()
+            if isinstance(w, QScrollArea) and w.widget():
+                ly = w.widget().layout()
+                if ly:
+                    ly.setSpacing(tokens.gap)
+                    ly.setContentsMargins(tokens.pad_page, tokens.pad_page, tokens.pad_page, tokens.pad_page)
+        for lp in self.findChildren(LongPressButton):
+            lp.set_tokens(tokens)
 
     def _refresh_once(self) -> None:
         if self._app_state:

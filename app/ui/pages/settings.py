@@ -22,6 +22,7 @@ from PyQt6.QtCore import Qt, QTimer
 
 from app.ui.pages.base import PageBase
 from app.core.config import get_config, save_config, load_config, AppConfig
+from app.ui.layout_profile import LayoutTokens, get_tokens
 from app.ui.widgets.long_press_button import LongPressButton
 from app.ui.widgets import CompactToggleRow, TwoColumnFormRow
 
@@ -32,32 +33,34 @@ _LOGS_DIR = _ROOT / "logs"
 _EXPORTS_DIR = _ROOT / "exports"
 
 
-def _make_card(title: str, parent: QWidget | None = None) -> QFrame:
-    """Card 风格分区 - 800×480 适配"""
+def _make_card(title: str, tokens: LayoutTokens | None, parent: QWidget | None = None) -> QFrame:
+    """Card 风格分区，布局由 tokens 驱动"""
+    t = tokens
+    g, p = (t.gap if t else 10), (t.pad_card if t else 10)
     card = QFrame(objectName="card", parent=parent)
     ly = QVBoxLayout(card)
-    ly.setSpacing(10)
-    ly.setContentsMargins(10, 10, 10, 10)
-    lbl = QLabel(title, objectName="accent")
-    lbl.setStyleSheet("font-size: 16px; font-weight: bold;")
+    ly.setSpacing(g)
+    ly.setContentsMargins(p, p, p, p)
+    lbl = QLabel(title, objectName="cardTitle")
     ly.addWidget(lbl)
     return card
 
 
 class _CollapsibleSection(QFrame):
-    """可折叠分区：标题按钮 + 内容，用于 Display/Comm/Alarm/Service"""
+    """可折叠分区：标题按钮 + 内容，用于 Display/Comm/Alarm/Service。样式由 theme.qss collapsibleHeaderBtn 统一。"""
 
-    def __init__(self, title: str, parent=None):
+    def __init__(self, title: str, tokens: LayoutTokens | None, parent=None):
         super().__init__(parent)
         self._title = title
         self._content: QWidget | None = None
         self._expanded = False
+        self._tokens = tokens
         ly = QVBoxLayout(self)
         ly.setContentsMargins(0, 0, 0, 0)
-        self._header_btn = QPushButton()
+        self._header_btn = QPushButton(objectName="collapsibleHeaderBtn")
         self._header_btn.setCheckable(True)
-        self._header_btn.setMinimumHeight(44)
-        self._header_btn.setStyleSheet("text-align: left; font-weight: bold; padding: 8px 10px;")
+        bh = tokens.btn_h if tokens else 44
+        self._header_btn.setMinimumHeight(bh)
         self._header_btn.clicked.connect(self._toggle)
         ly.addWidget(self._header_btn)
         self._update_text()
@@ -100,6 +103,7 @@ class SettingsPage(PageBase):
         self._modbus_master_getter = modbus_master_getter or (lambda: None)
         self._alarm_controller = alarm_controller
         self._config = self._config_getter()
+        self._tokens: LayoutTokens | None = get_tokens()
         self._setup_ui()
         self._load_from_config()
         self._start_time_timer()
@@ -116,11 +120,12 @@ class SettingsPage(PageBase):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        t = self._tokens
+        g, p = (t.gap if t else 8), (t.pad_page if t else 10)
         inner = QWidget()
         ly = QVBoxLayout(inner)
-        ly.setSpacing(8)
-        ly.setContentsMargins(10, 10, 10, 10)
+        ly.setSpacing(g)
+        ly.setContentsMargins(p, p, p, p)
 
         title = QLabel("设置")
         title.setObjectName("pageTitle")
@@ -128,35 +133,36 @@ class SettingsPage(PageBase):
         ly.addWidget(title)
 
         # Display：显示与语言 + 时间与日期（默认展开）
-        section_display = _CollapsibleSection("Display", self)
+        section_display = _CollapsibleSection("Display", t, self)
         section_display.set_expanded(True)
         display_content = QWidget()
         display_ly = QVBoxLayout(display_content)
-        display_ly.setSpacing(8)
-        card_a = _make_card("显示与语言", self)
+        display_ly.setSpacing(g)
+        card_a = _make_card("显示与语言", t, self)
         self._brightness_slider = QSlider(Qt.Orientation.Horizontal)
         self._brightness_slider.setRange(0, 100)
-        card_a.layout().addWidget(TwoColumnFormRow("亮度", self._brightness_slider))
+        card_a.layout().addWidget(TwoColumnFormRow("亮度", self._brightness_slider, tokens=t))
         self._theme_combo = QComboBox()
         self._theme_combo.addItems(["Light", "Dark"])
-        card_a.layout().addWidget(TwoColumnFormRow("主题模式", self._theme_combo))
+        card_a.layout().addWidget(TwoColumnFormRow("主题模式", self._theme_combo, tokens=t))
         self._language_combo = QComboBox()
         self._language_combo.addItems(["zh_CN", "en_US"])
-        card_a.layout().addWidget(TwoColumnFormRow("语言", self._language_combo))
+        card_a.layout().addWidget(TwoColumnFormRow("语言", self._language_combo, tokens=t))
+        bhk = t.btn_h_key if t else 52
         self._apply_restart_btn = QPushButton("应用并重启提示")
-        self._apply_restart_btn.setMinimumHeight(52)
+        self._apply_restart_btn.setMinimumHeight(bhk)
         self._apply_restart_btn.clicked.connect(self._on_apply_restart)
         card_a.layout().addWidget(self._apply_restart_btn)
         display_ly.addWidget(card_a)
-        card_b = _make_card("时间与日期", self)
+        card_b = _make_card("时间与日期", t, self)
         self._time_label = QLabel("--:--:--")
         self._time_label.setObjectName("bigNumber")
-        card_b.layout().addWidget(TwoColumnFormRow("当前时间", self._time_label))
+        card_b.layout().addWidget(TwoColumnFormRow("当前时间", self._time_label, tokens=t))
         self._timezone_combo = QComboBox()
         self._timezone_combo.addItems(["Asia/Shanghai", "America/Phoenix"])
-        card_b.layout().addWidget(TwoColumnFormRow("时区", self._timezone_combo))
+        card_b.layout().addWidget(TwoColumnFormRow("时区", self._timezone_combo, tokens=t))
         self._ntp_btn = QPushButton("同步时间（NTP）")
-        self._ntp_btn.setMinimumHeight(52)
+        self._ntp_btn.setMinimumHeight(bhk)
         self._ntp_btn.clicked.connect(self._on_ntp_sync)
         card_b.layout().addWidget(self._ntp_btn)
         display_ly.addWidget(card_b)
@@ -164,65 +170,64 @@ class SettingsPage(PageBase):
         ly.addWidget(section_display)
 
         # Comm：通讯（默认折叠）
-        section_comm = _CollapsibleSection("Comm", self)
+        section_comm = _CollapsibleSection("Comm", t, self)
         section_comm.set_expanded(False)
-        card_c = _make_card("通讯（Modbus RS485）", self)
+        card_c = _make_card("通讯（Modbus RS485）", t, self)
         self._port_edit = QLineEdit()
         self._port_edit.setPlaceholderText("/dev/ttyUSB0")
-        card_c.layout().addWidget(TwoColumnFormRow("串口端口", self._port_edit))
+        card_c.layout().addWidget(TwoColumnFormRow("串口端口", self._port_edit, tokens=t))
         self._baudrate_combo = QComboBox()
         self._baudrate_combo.addItems(["9600", "19200", "38400", "115200"])
-        card_c.layout().addWidget(TwoColumnFormRow("波特率", self._baudrate_combo))
+        card_c.layout().addWidget(TwoColumnFormRow("波特率", self._baudrate_combo, tokens=t))
         self._parity_combo = QComboBox()
         self._parity_combo.addItems(["N", "E", "O"])
-        card_c.layout().addWidget(TwoColumnFormRow("奇偶校验", self._parity_combo))
+        card_c.layout().addWidget(TwoColumnFormRow("奇偶校验", self._parity_combo, tokens=t))
         self._timeout_edit = QLineEdit()
         self._timeout_edit.setPlaceholderText("0.1~1.0")
-        card_c.layout().addWidget(TwoColumnFormRow("超时 (s)", self._timeout_edit))
+        card_c.layout().addWidget(TwoColumnFormRow("超时 (s)", self._timeout_edit, tokens=t))
         self._comm_status_label = QLabel("--")
-        card_c.layout().addWidget(TwoColumnFormRow("通讯状态", self._comm_status_label))
+        card_c.layout().addWidget(TwoColumnFormRow("通讯状态", self._comm_status_label, tokens=t))
         self._reconnect_btn = QPushButton("保存并重新连接")
-        self._reconnect_btn.setMinimumHeight(52)
+        self._reconnect_btn.setMinimumHeight(bhk)
         self._reconnect_btn.clicked.connect(self._on_reconnect)
         card_c.layout().addWidget(self._reconnect_btn)
         section_comm.set_content(card_c)
         ly.addWidget(section_comm)
 
         # Alarm：告警阈值（默认折叠）
-        section_alarm = _CollapsibleSection("Alarm", self)
+        section_alarm = _CollapsibleSection("Alarm", t, self)
         section_alarm.set_expanded(False)
-        card_d = _make_card("告警阈值（软件侧）", self)
+        card_d = _make_card("告警阈值（软件侧）", t, self)
         self._co_warn_edit = QLineEdit()
-        card_d.layout().addWidget(TwoColumnFormRow("CO 警告 (ppm)", self._co_warn_edit))
+        card_d.layout().addWidget(TwoColumnFormRow("CO 警告 (ppm)", self._co_warn_edit, tokens=t))
         self._co_crit_edit = QLineEdit()
-        card_d.layout().addWidget(TwoColumnFormRow("CO 严重 (ppm)", self._co_crit_edit))
+        card_d.layout().addWidget(TwoColumnFormRow("CO 严重 (ppm)", self._co_crit_edit, tokens=t))
         self._lpg_warn_edit = QLineEdit()
-        card_d.layout().addWidget(TwoColumnFormRow("LPG 警告 (%LEL)", self._lpg_warn_edit))
+        card_d.layout().addWidget(TwoColumnFormRow("LPG 警告 (%LEL)", self._lpg_warn_edit, tokens=t))
         self._lpg_crit_edit = QLineEdit()
-        card_d.layout().addWidget(TwoColumnFormRow("LPG 严重 (%LEL)", self._lpg_crit_edit))
+        card_d.layout().addWidget(TwoColumnFormRow("LPG 严重 (%LEL)", self._lpg_crit_edit, tokens=t))
         self._save_thresholds_btn = QPushButton("保存阈值")
-        self._save_thresholds_btn.setMinimumHeight(52)
+        self._save_thresholds_btn.setMinimumHeight(bhk)
         self._save_thresholds_btn.clicked.connect(self._on_save_thresholds)
         card_d.layout().addWidget(self._save_thresholds_btn)
         section_alarm.set_content(card_d)
         ly.addWidget(section_alarm)
 
         # Service：维护与调试（默认折叠），危险操作 LongPress + 倒计时
-        section_service = _CollapsibleSection("Service", self)
+        section_service = _CollapsibleSection("Service", t, self)
         section_service.set_expanded(False)
-        card_e = _make_card("维护与调试", self)
-        self._dev_mode_row = CompactToggleRow("开发模式")
+        card_e = _make_card("维护与调试", t, self)
+        self._dev_mode_row = CompactToggleRow("开发模式", tokens=t)
         card_e.layout().addWidget(self._dev_mode_row)
         self._export_logs_btn = QPushButton("导出日志")
-        self._export_logs_btn.setMinimumHeight(52)
+        self._export_logs_btn.setMinimumHeight(bhk)
         self._export_logs_btn.clicked.connect(self._on_export_logs)
         card_e.layout().addWidget(self._export_logs_btn)
         self._export_config_btn = QPushButton("导出配置")
-        self._export_config_btn.setMinimumHeight(52)
+        self._export_config_btn.setMinimumHeight(bhk)
         self._export_config_btn.clicked.connect(self._on_export_config)
         card_e.layout().addWidget(self._export_config_btn)
-        self._reset_btn = LongPressButton("长按恢复默认设置")
-        self._reset_btn.setMinimumHeight(52)
+        self._reset_btn = LongPressButton("长按恢复默认设置", tokens=t)
         self._reset_btn.setDanger(True)
         self._reset_btn.setHoldMs(2000)
         self._reset_btn.confirmed.connect(self._on_reset_defaults)

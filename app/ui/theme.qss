@@ -423,6 +423,87 @@ QFrame#statusBar {
     min-height: {{STATUS_BAR_H}}px;
 }
 
+/* === StatusLight 红绿灯（kind 动态属性） === */
+QLabel#statusLight[kind="ok"] {
+    background-color: #22C55E;
+    border-radius: 10px;
+}
+
+QLabel#statusLight[kind="warn"] {
+    background-color: #EAB308;
+    border-radius: 10px;
+}
+
+QLabel#statusLight[kind="crit"] {
+    background-color: #EF4444;
+    border-radius: 10px;
+}
+
+QLabel#statusLight[kind="unknown"] {
+    background-color: #9CA3AF;
+    border-radius: 10px;
+}
+
+/* === 离线横幅 severity === */
+QFrame#offlineBanner {
+    background-color: #B91C1C;
+    color: white;
+    padding: {{GAP}}px {{PAD_CARD}}px;
+    font-size: {{FONT_SMALL}}px;
+    font-weight: bold;
+    border-radius: 6px;
+}
+
+/* === 可折叠标题按钮 === */
+QPushButton#collapsibleHeaderBtn {
+    text-align: left;
+    font-weight: bold;
+    padding: {{GAP}}px {{PAD_CARD}}px;
+    min-height: {{BTN_H}}px;
+}
+
+/* === More 子页头部 === */
+QFrame#moreHeader {
+    background-color: #E5E7EB;
+    border-bottom: 1px solid #9CA3AF;
+}
+
+QFrame#moreHeader QPushButton {
+    min-height: {{BTN_H}}px;
+}
+
+/* === 视频区域 === */
+QFrame#videoWidget {
+    background-color: #1a1a1a;
+    border: none;
+}
+
+/* === 诊断从站行/点 severity === */
+QFrame#slaveRow {
+    background: transparent;
+}
+
+QLabel#slaveDot[severity="ok"] {
+    color: #22C55E;
+    font-size: {{FONT_SMALL}}px;
+}
+
+QLabel#slaveDot[severity="crit"] {
+    color: #B91C1C;
+    font-size: {{FONT_SMALL}}px;
+}
+
+QLabel#slaveDot[severity="unknown"] {
+    color: #6B7280;
+    font-size: {{FONT_SMALL}}px;
+}
+
+/* === 卡片标题（替代内联 font-size） === */
+QLabel#cardTitle {
+    font-size: {{FONT_TITLE}}px;
+    font-weight: bold;
+}
+
 /* === 其他 === */
 QStackedWidget {
     background-color: #E8EAED;
@@ -460,5 +541,5 @@ QTableWidget {
 
 QPushButton#cameraSourceBtn {
     min-height: {{BTN_H}}px;
-    min-width: 48px;
+    min-width: {{ICON_BTN_H}}px;
 }

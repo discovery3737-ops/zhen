@@ -22,15 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 class VideoWidget(QFrame):
-    """承载 GStreamer overlay 的 QWidget，提供 winId() 给 VideoManager"""
+    """承载 GStreamer overlay 的 QWidget，提供 winId() 给 VideoManager。样式由 theme.qss videoWidget 统一。"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("videoWidget")
         self.setMinimumSize(200, 120)
-        self.setStyleSheet(
-            "#videoWidget { background: #1a1a1a; border: none; }"
-        )
 
 
 # TODO: 分屏合成 - 多路 RTSP 并排显示
@@ -118,7 +115,6 @@ class SingleViewWidget(QWidget):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setMaximumHeight(56)
         scroll.setMinimumHeight(52)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         ly.addWidget(scroll)
 
     def _connect_video_manager(self):
