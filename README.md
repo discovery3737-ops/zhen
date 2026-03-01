@@ -1,118 +1,72 @@
-# IntelligentCrawler2.0 - M0 联调基线
+\# zhen
 
-## 快速启动
 
-### 方式一：Docker Compose（推荐）
 
-```bash
-cd IntelligentCrawler2.0
-docker compose up -d
-```
+Python + PyQt6 UI + Modbus(可选) + 视频(可选) 项目。
 
-等待 postgres 就绪后，API 在 `http://localhost:8000`。
 
-前端需单独启动：
 
-```bash
-cd frontend
-pnpm install   # 或 npm install
-pnpm dev       # 或 npm run dev
-```
+\## Quick Start (Windows)
 
-### 方式二：本地启动（无 Docker）
+```powershell
 
-```bash
-# 1. 后端
-cd backend
-python -m venv venv
-venv\Scripts\activate   # Windows
+cd C:\\path\\to\\zhen
+
+python -m venv .venv
+
+.\\.venv\\Scripts\\activate
+
+pip install -U pip
+
 pip install -r requirements.txt
-python scripts/seed_runs.py              # 初始化表并插入示例 runs
-python scripts/create_sample_report.py 2025-02-28  # 创建示例报表
-uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-# 2. 前端（新终端）
-cd frontend
-pnpm install   # 或 npm install
-pnpm dev       # 或 npm run dev
-```
+python -m app.main
 
-说明：未设置 `DATABASE_URL` 时，默认使用 SQLite `./crawler.db`；Docker 部署时使用 PostgreSQL。`seed_runs.py` 会自动建表并插入示例 runs；`create_sample_report.py` 会生成示例报表供下载测试。
 
----
+Quick Start (Raspberry Pi OS)
+cd /path/to/zhen
+python3 -m venv venv
+source venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
+python3 -m app.main
 
-## 验收步骤
 
-### curl 验收
+## 真实硬件启用 Modbus
 
-```bash
-# 1. GET /health
-curl -s http://localhost:8000/health
+默认 `config.yaml` 不存在或 `modbus.use_mock: true` 时使用模拟数据，无需串口。真实树莓派 RS485/Modbus 部署需：
 
-# 2. GET /runs
-curl -s "http://localhost:8000/runs?page=1&page_size=20"
+1. 安装依赖：`pip install pymodbus[serial]`
+2. 复制 `config.yaml.example` 为 `config.yaml`，并修改：
+   - `modbus.use_mock: false`
+   - `modbus.port: /dev/ttyUSB0`（或实际串口设备，如 `/dev/ttyAMA0`、`/dev/ttyS0`）
+3. 确保用户有串口访问权限，例如：`sudo usermod -aG dialout $USER`
 
-# 3. 下载报表（-O 保存到文件，-J 使用 Content-Disposition 文件名）
-curl -OJ "http://localhost:8000/reports/daily/download?dt=2025-02-28"
-# 文件会下载为 daily_report_2025-02-28.xlsx
 
-# 4. 404 测试（文件不存在）
-curl -s "http://localhost:8000/reports/daily/download?dt=2099-01-01"
-# 应返回 {"ok":false,"message":"Report not found"}
-```
+## 树莓派视频嵌入推荐：使用 X11 会话
 
-### 前端验收
+RTSP 视频在 Qt 窗口内嵌显示依赖 GStreamer 的 overlay（如 ximagesink/waylandsink）。在 **Raspberry Pi OS** 上推荐使用 **X11** 会话以获得稳定内嵌，避免弹窗或黑屏。
 
-1. 打开 `http://localhost:5173`
-2. Runs 页面应显示 run 列表（若已执行 seed_runs.py）
-3. 点击「下载报表」按钮应触发浏览器下载 xlsx
-4. 若后端未启动，应显示 fallback mock 数据提示
+- **若当前为 Wayland**：部分环境下 overlay 可能不可用，应用会自动降级为占位画面并提示“建议切换到 X11”。可在系统设置中将会话改为 X11，或使用 startx / 选择“X11 session”登录。
+- **若为 X11**：一般无需改配置；若遇问题可在 `config.yaml` 中设置 `video.sink: ximagesink` 或 `ximagesink`/`glimagesink` 尝试。
+- **仅需占位、不播放**：可设置 `video.force_no_embed: true`，界面将只显示提示文案不尝试嵌入。
 
----
+## 启用硬件亮度控制（树莓派 7 寸 DSI）
 
-## 目录结构
+设置页「显示与语言」中的「屏幕亮度」滑条可调节 Raspberry Pi 官方 7 寸 DSI 背光（`/sys/class/backlight/rpi_backlight`）。为避免以 root 运行整个应用，亮度写入通过 **sudo 调用小脚本** 完成。
 
-```
-IntelligentCrawler2.0/
-├── backend/
-│   ├── app/
-│   │   ├── main.py          # FastAPI 入口
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   ├── models.py        # app_job_run
-│   │   ├── schemas.py
-│   │   ├── services.py
-│   │   └── routers/
-│   │       ├── health.py    # GET /health
-│   │       ├── runs.py      # GET /runs, GET /runs/{run_id}
-│   │       └── reports.py   # GET /reports/daily/download
-│   ├── scripts/
-│   │   ├── seed_runs.py
-│   │   └── create_sample_report.py
-│   ├── reports/daily/       # 报表存储
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── src/
-│   │   ├── api.js
-│   │   ├── pages/RunsPage.jsx
-│   │   └── ...
-│   ├── package.json
-│   └── vite.config.js      # /api 代理到 8000
-├── docker-compose.yml
-└── README.md
-```
+1. **创建亮度脚本** `/usr/local/bin/rpi_set_backlight`（可执行）：
+   ```bash
+   #!/bin/sh
+   echo "$1" > /sys/class/backlight/rpi_backlight/brightness
+   ```
+2. **放行无密码执行**：新建 `/etc/sudoers.d/rv-hmi-backlight`，内容（将 `pi` 改为实际运行 HMI 的用户名）：
+   ```
+   pi ALL=(ALL) NOPASSWD: /usr/local/bin/rpi_set_backlight
+   ```
+   然后执行 `sudo chmod 440 /etc/sudoers.d/rv-hmi-backlight`。
+3. 在 `config.yaml` 中可设置 `display.brightness_percent: 60`（0~100）；应用启动约 1 秒后会应用该亮度，设置页中调节会即时生效并写回配置。
 
----
+**为何不用 root 跑整个应用**：仅让一个小脚本通过 sudo 写 sysfs，应用主体以普通用户运行，可降低权限、减少攻击面；若以 root 运行整个 GUI，一旦被利用则拥有完整系统权限。
 
-## API 说明
 
-| 接口 | 说明 |
-|------|------|
-| `GET /health` | 返回 `{ok:true, data:{service, version, time}}` |
-| `GET /runs?page=1&page_size=20` | 分页列表 |
-| `GET /runs/{run_id}` | 单条详情 |
-| `GET /reports/daily/download?dt=YYYY-MM-DD` | 文件流下载 xlsx，不存在 404 |
-
-统一成功：`{ok:true, data:{...}}`  
-统一错误：`{ok:false, message, detail?}`

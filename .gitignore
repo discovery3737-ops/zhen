@@ -1,19 +1,26 @@
-# Python
+# python
 __pycache__/
 *.py[cod]
-venv/
+
+# venv
 .venv/
-*.egg-info/
-.crawler.db
+venv/
 
-# Node
-node_modules/
+# logs & runtime
+logs/
+*.log
 
-# Reports (keep .gitkeep)
-backend/reports/daily/*.xlsx
+# local config (do NOT commit)
+config.yaml
+*.local.yaml
 
-# IDE
-.idea/
+# OS / editor
 .vscode/
-*.swp
-*.swo
+.idea/
+.DS_Store
+Thumbs.db
+
+# history / accidental files
+.python_history
+.lesshst
+.gitconfig
