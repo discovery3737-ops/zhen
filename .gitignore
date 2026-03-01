@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+.crawler.db
+
+# Node
+node_modules/
+
+# Reports (keep .gitkeep)
+backend/reports/daily/*.xlsx
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
