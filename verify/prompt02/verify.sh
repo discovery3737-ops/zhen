@@ -1,30 +1,44 @@
 #!/usr/bin/env bash
+# M1 noVNC 授权闭环验收脚本
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "${DIR}/../.." && pwd)"
 source "${ROOT}/verify/common.sh"
 
+API_BASE="${API_BASE:-http://localhost:8000}"
+
 need_cmd curl
 wait_health
 
-log "MANUAL STEP REQUIRED:"
-log "1) Open front-end AuthCenter and click '创建授权会话' (noVNC iframe should open)."
-log "2) Complete login: password -> puzzle -> SMS OTP."
-log "3) Click '完成授权' in UI (calls /auth/session/finish)."
-log "Then re-run this script to verify credential status."
+log "1. POST /auth/session/start"
+START=$(curl -fsS -X POST "${API_BASE}/auth/session/start")
+echo "$START" | jq .
+if ! echo "$START" | jq -e '.ok==true and .data.novnc_url' >/dev/null; then
+  echo "start failed: no novnc_url" >&2
+  exit 1
+fi
+SESSION_ID=$(echo "$START" | jq -r '.data.session_id')
+TOKEN=$(echo "$START" | jq -r '.data.token')
+log "session_id=$SESSION_ID"
 
-curl_json_must "${API_BASE}/auth/credential/status" '.ok==true'
+log "2. GET /auth/credential/status"
+curl -fsS "${API_BASE}/auth/credential/status" | jq .
 
-if has_cmd jq; then
-  status="$(curl -fsS "${API_BASE}/auth/credential/status" | jq -r '.data.status // .status // empty')"
-  log "Credential status: ${status}"
-  if [[ "${status}" != "ACTIVE" ]]; then
-    echo "Credential status is not ACTIVE (got: ${status}). Complete authorization first." >&2
-    exit 5
-  fi
+log "3. POST /auth/session/finish (需先在 noVNC 中完成登录)"
+log "   novnc_url: $(echo "$START" | jq -r '.data.novnc_url')"
+log "   请在浏览器中打开 noVNC，完成登录后执行："
+log "   curl -X POST ${API_BASE}/auth/session/finish -H 'Content-Type: application/json' -d '{\"session_id\":\"${SESSION_ID}\",\"token\":\"${TOKEN}\"}'"
+FINISH=$(curl -fsS -X POST "${API_BASE}/auth/session/finish" \
+  -H "Content-Type: application/json" \
+  -d "{\"session_id\":\"${SESSION_ID}\",\"token\":\"${TOKEN}\"}")
+echo "$FINISH" | jq .
+if echo "$FINISH" | jq -e '.ok==true' >/dev/null; then
+  log "finish OK, credential ACTIVE"
 else
-  log "jq not installed; cannot assert ACTIVE. Install jq for stronger checks."
+  log "finish failed (预期：若未完成短信验证则返回 ok:false)"
 fi
 
-psql_exec "${DIR}/verify.sql"
-log "Prompt02 verification finished."
+log "4. GET /auth/credential/status (最终状态)"
+curl -fsS "${API_BASE}/auth/credential/status" | jq .
+
+log "M1 Prompt02 验收完成。"

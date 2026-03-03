@@ -56,3 +56,30 @@ export async function downloadReport(dt) {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
 }
+
+// M1 授权中心 API
+export async function authSessionStart() {
+  const res = await request("/auth/session/start", { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "创建会话失败");
+  }
+  return res.json();
+}
+
+export async function authSessionFinish(sessionId, token) {
+  const res = await request("/auth/session/finish", {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId, token: token || null }),
+  });
+  return res.json();
+}
+
+export async function authCredentialStatus() {
+  const res = await request("/auth/credential/status");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "获取凭证状态失败");
+  }
+  return res.json();
+}

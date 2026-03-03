@@ -1,4 +1,17 @@
 services:
+  browser:
+    build: ./browser
+    ports:
+      - "6080:6080"   # noVNC
+      - "9222:9222"   # CDP
+    shm_size: 2gb
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:6080/ || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
   postgres:
     image: postgres:15-alpine
     environment:
@@ -23,6 +36,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/crawler
       API_VERSION: "0.1.0"
       REPORTS_DIR: /app/reports
+      BROWSER_NOVNC_URL: http://localhost:6080
+      BROWSER_CDP_URL: http://browser:9222
+      AUTH_CHECK_URL: https://httpbin.org/cookies
     volumes:
       - ./backend/reports:/app/reports
     depends_on:

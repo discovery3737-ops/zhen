@@ -1,11 +1,11 @@
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from .models import AppJobRun
+from ..models import AppJobRun
 
 
 async def get_runs_list(
     db: AsyncSession, page: int = 1, page_size: int = 20
-) -> tuple[list[AppJobRun], int]:
+) -> tuple[list, int]:
     offset = (page - 1) * page_size
     count_q = select(func.count()).select_from(AppJobRun)
     total = (await db.execute(count_q)).scalar() or 0
