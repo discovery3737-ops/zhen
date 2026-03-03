@@ -51,3 +51,8 @@ backend/crawler.db
 backend/*.db
 *.db
 
+
+# tmp & excel artifacts
+.tmp/
+*.xlsx
+
