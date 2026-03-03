@@ -4,7 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import VERSION
 from .database import engine, Base, get_db
 from .models import AppJobRun
+<<<<<<< HEAD
 from .routers import health, runs, reports
+=======
+from .routers import health, runs, reports, auth, config_api, jobs
+>>>>>>> edfd4a2 (M2: config in DB + web-configurable settings)
 
 
 app = FastAPI(title="Crawler API", version=VERSION)
@@ -20,6 +24,12 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(runs.router)
 app.include_router(reports.router)
+<<<<<<< HEAD
+=======
+app.include_router(auth.router)
+app.include_router(config_api.router)
+app.include_router(jobs.router)
+>>>>>>> edfd4a2 (M2: config in DB + web-configurable settings)
 
 
 @app.exception_handler(HTTPException)

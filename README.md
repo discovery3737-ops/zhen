@@ -51,6 +51,7 @@ RTSP 视频在 Qt 窗口内嵌显示依赖 GStreamer 的 overlay（如 ximagesin
 - **若为 X11**：一般无需改配置；若遇问题可在 `config.yaml` 中设置 `video.sink: ximagesink` 或 `ximagesink`/`glimagesink` 尝试。
 - **仅需占位、不播放**：可设置 `video.force_no_embed: true`，界面将只显示提示文案不尝试嵌入。
 
+<<<<<<< HEAD
 ## 启用硬件亮度控制（树莓派 7 寸 DSI）
 
 设置页「显示与语言」中的「屏幕亮度」滑条可调节 Raspberry Pi 官方 7 寸 DSI 背光（`/sys/class/backlight/rpi_backlight`）。为避免以 root 运行整个应用，亮度写入通过 **sudo 调用小脚本** 完成。
@@ -66,7 +67,45 @@ RTSP 视频在 Qt 窗口内嵌显示依赖 GStreamer 的 overlay（如 ximagesin
    ```
    然后执行 `sudo chmod 440 /etc/sudoers.d/rv-hmi-backlight`。
 3. 在 `config.yaml` 中可设置 `display.brightness_percent: 60`（0~100）；应用启动约 1 秒后会应用该亮度，设置页中调节会即时生效并写回配置。
+=======
+### 可选：示例数据、配置与报表
+
+```powershell
+cd backend
+.\venv\Scripts\python.exe scripts/seed_runs.py
+.\venv\Scripts\python.exe scripts/seed_config.py
+.\venv\Scripts\python.exe scripts/create_sample_report.py 2025-02-28
+```
+
+- `seed_runs.py`：建表并插入示例 run 记录
+- `seed_config.py`：M2 配置表预置（dataset_def、global_config、schedule、delivery）
+- `create_sample_report.py`：生成报表，供下载接口测试
+>>>>>>> edfd4a2 (M2: config in DB + web-configurable settings)
 
 **为何不用 root 跑整个应用**：仅让一个小脚本通过 sudo 写 sysfs，应用主体以普通用户运行，可降低权限、减少攻击面；若以 root 运行整个 GUI，一旦被利用则拥有完整系统权限。
 
 
+<<<<<<< HEAD
+=======
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8000/health"
+Invoke-RestMethod -Uri "http://localhost:8000/runs?page=1&page_size=20"
+Invoke-WebRequest -Uri "http://localhost:8000/reports/daily/download?dt=2025-02-28" -OutFile "daily_report.xlsx" -UseBasicParsing
+```
+
+### M1 noVNC 授权闭环
+
+```powershell
+$base = "http://localhost:8000"
+Invoke-RestMethod "$base/auth/session/start" -Method Post
+Invoke-RestMethod "$base/auth/credential/status"
+```
+
+## API 文档
+
+- M0：`/health`、`/runs`、`/runs/{run_id}`、`/reports/daily/download`
+- M1：`/auth/session/start`、`/auth/session/finish`、`/auth/credential/status`
+- M2：`/config/global`、`/datasets/config`、`/schedule/daily`、`/delivery`、`/jobs/daily/run`
+
+详见 `docs/API_M1_AUTH.md`、`docs/M2_README.md`。
+>>>>>>> edfd4a2 (M2: config in DB + web-configurable settings)
