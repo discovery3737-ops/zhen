@@ -39,3 +39,15 @@ data/
 .tmp/
 *.xlsx
 
+
+# local db
+backend/crawler.db
+backend/*.db
+*.db
+
+
+# local db
+backend/crawler.db
+backend/*.db
+*.db
+
